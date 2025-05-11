@@ -1,0 +1,20 @@
+[
+    {
+        "id": "s1",
+        "employeeId": "e1",
+        "employeeName": "Alice Smith",
+        "date": "2025-05-10",
+        "startTime": "09:00 AM",
+        "endTime": "05:00 PM",
+        "color": "#60A5FA"
+    },
+    {
+        "id": "s2",
+        "employeeId": "e2",
+        "employeeName": "Bob Johnson",
+        "date": "2025-05-10",
+        "startTime": "10:00 AM",
+        "endTime": "06:00 PM",
+        "color": "#34D399"
+    }
+]

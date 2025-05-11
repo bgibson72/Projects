@@ -1,0 +1,17 @@
+[
+    {
+        "id": "r1",
+        "employee": "Alice Smith",
+        "type": "Time Off",
+        "date": "2025-05-10",
+        "status": "Pending"
+    },
+    {
+        "id": "r2",
+        "employee": "Bob Johnson",
+        "type": "Shift Coverage",
+        "date": "2025-05-12",
+        "time": "09:00 AM - 10:00 AM",
+        "status": "Pending"
+    }
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "id": "e1",
+    "email": "alice@example.com",
+    "password": "password123",
+    "name": "Alice Smith",
+    "role": "admin",
+    "firstName": "Alice",
+    "lastName": "Smith",
+    "position": "Manager",
+    "phone": "123-456-7890",
+    "color": "#60A5FA",
+    "idNumber": "EMP001"
+  },
+  {
+    "id": "e2",
+    "email": "bob@example.com",
+    "password": "password123",
+    "name": "Bob Johnson",
+    "role": "employee",
+    "firstName": "Bob",
+    "lastName": "Johnson",
+    "position": "Technician",
+    "phone": "987-654-3210",
+    "color": "#34D399",
+    "idNumber": "EMP002"
+  },
+  {
+    "id": "admin",
+    "email": "admin",
+    "password": "admin",
+    "name": "Admin User",
+    "role": "admin",
+    "firstName": "Admin",
+    "lastName": "User",
+    "position": "Administrator",
+    "phone": "555-555-5555",
+    "color": "#F87171",
+    "idNumber": "ADM001"
+  }
+]

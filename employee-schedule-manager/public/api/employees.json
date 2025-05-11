@@ -1,0 +1,22 @@
+[
+    {
+        "id": "e1",
+        "firstName": "Alice",
+        "lastName": "Smith",
+        "position": "Manager",
+        "email": "alice@example.com",
+        "phone": "123-456-7890",
+        "idNumber": "EMP001",
+        "color": "#60A5FA"
+    },
+    {
+        "id": "e2",
+        "firstName": "Bob",
+        "lastName": "Johnson",
+        "position": "Technician",
+        "email": "bob@example.com",
+        "phone": "987-654-3210",
+        "idNumber": "EMP002",
+        "color": "#34D399"
+    }
+]
