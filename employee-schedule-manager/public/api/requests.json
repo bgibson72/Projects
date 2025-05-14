@@ -1,17 +1,73 @@
 [
-    {
-        "id": "r1",
-        "employee": "Alice Smith",
-        "type": "Time Off",
-        "date": "2025-05-10",
-        "status": "Pending"
-    },
-    {
-        "id": "r2",
-        "employee": "Bob Johnson",
-        "type": "Shift Coverage",
-        "date": "2025-05-12",
-        "time": "09:00 AM - 10:00 AM",
-        "status": "Pending"
-    }
+  {
+    "id": "r1",
+    "employee": "Alice Smith",
+    "type": "Time Off",
+    "date": "2025-05-10",
+    "status": "Pending"
+  },
+  {
+    "id": "r2",
+    "employee": "Bob Johnson",
+    "type": "Shift Coverage",
+    "date": "2025-05-12",
+    "time": "09:00 AM - 10:00 AM",
+    "status": "Pending"
+  },
+  {
+    "id": "r1747183493964",
+    "employee": "Alice Smith",
+    "type": "Time Off",
+    "date": "05/13/2025",
+    "time": "All Day",
+    "status": "Pending"
+  },
+  {
+    "id": "r1747183587624",
+    "employee": "Bob Johnson",
+    "type": "Time Off",
+    "date": "05/10/2025",
+    "time": "All Day",
+    "status": "Pending"
+  },
+  {
+    "id": "r1747183833612",
+    "employee": "Alice Smith",
+    "type": "Time Off",
+    "date": "05/10/2025",
+    "time": "09:00 AM-12:00 PM",
+    "status": "Pending"
+  },
+  {
+    "id": "r1747184513340",
+    "employee": "Bob Johnson",
+    "type": "Time Off",
+    "date": "06/10/2025",
+    "time": "All Day",
+    "status": "Approved"
+  },
+  {
+    "id": "r1747185053064",
+    "employee": "Bob Johnson",
+    "type": "Time Off",
+    "date": "06/13/2025",
+    "time": "All Day",
+    "status": "Pending"
+  },
+  {
+    "id": "r1747187043523",
+    "employee": "Bob Johnson",
+    "type": "Time Off",
+    "date": "06/10/2025",
+    "time": "All Day",
+    "status": "Approved"
+  },
+  {
+    "id": "r1747192756341",
+    "employee": "Bob Johnson",
+    "type": "Time Off",
+    "date": "06/10/2025",
+    "time": "All Day",
+    "status": "Pending"
+  }
 ]

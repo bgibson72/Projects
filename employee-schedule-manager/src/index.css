@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-    @apply bg-bradley-light-gray text-bradley-dark-gray;
+:root {
+    --braldey-light-red: #E42F4B;
+    --bradley-red: #CE1432;
+    --bradley-med-red: #A50000;
+    --bradley-dark-red: #870F0F;
+    --bradley-light-gray: #E2E8F0;
+    --bradley-medium-gray: #939598;
+    --bradley-dark-gray: #374151;
+    --bradley-sky-blue: #A2BDE0;
+    --bradley-blue: #2563EB;
+    --bradley-accent: #3B82F6;
 }

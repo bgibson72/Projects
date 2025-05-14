@@ -1,20 +1,209 @@
 [
-    {
-        "id": "s1",
-        "employeeId": "e1",
-        "employeeName": "Alice Smith",
-        "date": "2025-05-10",
-        "startTime": "09:00 AM",
-        "endTime": "05:00 PM",
-        "color": "#60A5FA"
-    },
-    {
-        "id": "s2",
-        "employeeId": "e2",
-        "employeeName": "Bob Johnson",
-        "date": "2025-05-10",
-        "startTime": "10:00 AM",
-        "endTime": "06:00 PM",
-        "color": "#34D399"
-    }
+  {
+    "id": "s1",
+    "employeeId": "e1",
+    "employeeName": "Alice Smith",
+    "date": "2025-05-10",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#60A5FA"
+  },
+  {
+    "id": "s2",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-10",
+    "startTime": "10:00 AM",
+    "endTime": "06:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975266",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-12",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975292",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-19",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975293",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-20",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975294",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-21",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975295",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-22",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975296",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-23",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975293",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-26",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975294",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-27",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975295",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-28",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975296",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-29",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975297",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-05-30",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975294",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-02",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975295",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-03",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975296",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-04",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975297",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-05",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975298",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-06",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975295",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-09",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975296",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-10",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975297",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-11",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975298",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-12",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  },
+  {
+    "id": "s1747064975299",
+    "employeeId": "e2",
+    "employeeName": "Bob Johnson",
+    "date": "2025-06-13",
+    "startTime": "09:00 AM",
+    "endTime": "05:00 PM",
+    "color": "#34D399"
+  }
 ]

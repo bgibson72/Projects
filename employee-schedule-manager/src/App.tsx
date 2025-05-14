@@ -1,41 +1,34 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import Navbar from '@/components/Navbar';
-import Login from '@/pages/Login';
 import Dashboard from '@/components/Dashboard';
 import Schedule from '@/pages/Schedule';
 import TimeOffRequest from '@/components/TimeOffRequest';
 import Employees from '@/components/Employees';
 import EditProfile from '@/components/EditProfile';
+import Login from '@/pages/Login';
 import NotFound from '@/pages/NotFound';
+import ShiftCoverageRequest from '@/components/ShiftCoverageRequest';
 
 export default function App() {
-  const { user, isAuthenticated } = useAuthStore();
-  const location = useLocation();
+  const { user, checkAuth } = useAuthStore();
 
-  console.log(
-    'App: Current route:',
-    location.pathname,
-    'isAuthenticated:',
-    isAuthenticated,
-    'user:',
-    user,
-  );
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
-  const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
-    console.log(
-      'ProtectedRoute: Checking auth, isAuthenticated =',
-      isAuthenticated,
-      'user =',
-      user,
-    );
-    return isAuthenticated ? children : <Login />;
+  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    if (!user) {
+      return <Navigate to='/' replace />;
+    }
+    return <>{children}</>;
   };
 
   return (
     <div className='min-h-screen bg-bradley-light-gray'>
-      <Navbar minimal={location.pathname === '/'} />
-      <div className='container mx-auto p-4'>
+      <Navbar />
+      <div className='container mx-auto px-4 py-6'>
         <Routes>
           <Route path='/' element={<Login />} />
           <Route
@@ -66,7 +59,7 @@ export default function App() {
             path='/employees'
             element={
               <ProtectedRoute>
-                <Employees />
+                {user?.role === 'admin' ? <Employees /> : <Navigate to='/dashboard' replace />}
               </ProtectedRoute>
             }
           />
@@ -75,6 +68,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <EditProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path='/shift-coverage'
+            element={
+              <ProtectedRoute>
+                <ShiftCoverageRequest />
               </ProtectedRoute>
             }
           />

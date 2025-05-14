@@ -4,12 +4,23 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                'bradley-red': '#E11837', // RGB 225/24/55
-                'bradley-dark-red': '#A50000', // RGB 165/0/0
-                'bradley-sky-blue': '#A2BDE0', // RGB 162/189/224
-                'bradley-light-gray': '#D2D3D4', // RGB 210/211/212
-                'bradley-medium-gray': '#939598', // RGB 147/149/152
-                'bradley-dark-gray': '#5A5A5C', // RGB 90/90/92
+                'bradley-light-red': '#E42F4B',
+                'bradley-red': '#CE1432',
+                'bradley-med-red': '#A50000',
+                'bradley-dark-red': '#870F0F',
+                'bradley-light-gray': '#E2E8F0',
+                'bradley-medium-gray': '#939598',
+                'bradley-dark-gray': '#374151',
+                'bradley-sky-blue': '#A2BDE0',
+                'bradley-blue': '#2563EB',
+                'bradley-accent': '#3B82F6',
+                'black': '#000000',
+                'bradley-green': '#33CC33',
+                'bradley-dark-green': '#339933',
+            },
+            boxShadow: {
+                'bradley': '0 4px 2px 0 #939598',
+                'bradley-active': '0 1px 1px 0 #870F0F',
             },
         },
     },

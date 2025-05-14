@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { Edit, Trash2 } from 'lucide-react';
-import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/api/mockApi';
 
 interface Employee {
   id: string;
@@ -17,328 +15,262 @@ interface Employee {
 export default function Employees() {
   const { user } = useAuthStore();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [isCustomColor, setIsCustomColor] = useState(false);
-  const [form, setForm] = useState({
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     position: '',
     email: '',
     phone: '',
     idNumber: '',
-    color: '#60A5FA',
+    color: '#000000',
   });
 
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
-        const data = await getEmployees();
-        console.log('Fetched employees:', data);
+        const response = await fetch('http://localhost:3001/api/employees');
+        if (!response.ok) throw new Error('Failed to fetch employees');
+        const data = await response.json();
         setEmployees(data);
-      } catch {
-        console.error('Failed to fetch employees');
+      } catch (err: unknown) {
+        console.error('Employees: Failed to fetch employees:', err);
       }
     };
     fetchEmployees();
   }, []);
 
-  const sortedEmployees = [...employees].sort((a, b) => {
-    if (a.lastName === b.lastName) {
-      return a.firstName.localeCompare(b.firstName);
-    }
-    return a.lastName.localeCompare(b.lastName);
-  });
-
-  const handleAddSubmit = async (e: React.FormEvent) => {
+  const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addEmployee({ ...form, id: `e${Date.now()}` });
-      const data = await getEmployees();
-      setEmployees(data);
-      setIsAddOpen(false);
-      setIsCustomColor(false);
-      setForm({
+      const newEmployee = {
+        id: `e${Date.now()}`,
+        ...formData,
+      };
+      const response = await fetch('http://localhost:3001/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEmployee),
+      });
+      if (!response.ok) throw new Error('Failed to add employee');
+      setEmployees((prev) => [...prev, newEmployee]);
+      setFormData({
         firstName: '',
         lastName: '',
         position: '',
         email: '',
         phone: '',
         idNumber: '',
-        color: '#60A5FA',
+        color: '#000000',
       });
-    } catch {
-      console.error('Failed to add employee');
+      setIsAddModalOpen(false);
+    } catch (err: unknown) {
+      console.error('Employees: Failed to add employee:', err);
     }
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
+  const handleEditEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedEmployee) {
-      try {
-        await updateEmployee(selectedEmployee.id, form);
-        const data = await getEmployees();
-        setEmployees(data);
-        setIsEditOpen(false);
-        setIsCustomColor(false);
-        setSelectedEmployee(null);
-        setForm({
-          firstName: '',
-          lastName: '',
-          position: '',
-          email: '',
-          phone: '',
-          idNumber: '',
-          color: '#60A5FA',
-        });
-      } catch {
-        console.error('Failed to update employee');
-      }
+    if (!currentEmployee) return;
+    try {
+      const updatedEmployee = { ...currentEmployee, ...formData };
+      const response = await fetch(`http://localhost:3001/api/employees/${currentEmployee.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedEmployee),
+      });
+      if (!response.ok) throw new Error('Failed to update employee');
+      setEmployees((prev) =>
+        prev.map((emp) => (emp.id === currentEmployee.id ? updatedEmployee : emp))
+      );
+      setFormData({
+        firstName: '',
+        lastName: '',
+        position: '',
+        email: '',
+        phone: '',
+        idNumber: '',
+        color: '#000000',
+      });
+      setCurrentEmployee(null);
+      setIsEditModalOpen(false);
+    } catch (err: unknown) {
+      console.error('Employees: Failed to update employee:', err);
     }
   };
 
-  const handleDelete = async () => {
-    if (selectedEmployee) {
-      try {
-        await deleteEmployee(selectedEmployee.id);
-        const data = await getEmployees();
-        setEmployees(data);
-        setIsDeleteOpen(false);
-        setSelectedEmployee(null);
-      } catch {
-        console.error('Failed to delete employee');
-      }
+  const handleDeleteEmployee = async (id: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/employees/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete employee');
+      setEmployees((prev) => prev.filter((emp) => emp.id !== id));
+    } catch (err: unknown) {
+      console.error('Employees: Failed to delete employee:', err);
     }
   };
 
-  const colorOptions = [
-    '#ffb74d', // Orange
-    '#fff176', // Yellow
-    '#81c784', // Green
-    '#7986cb', // Blue
-    '#ba68c8', // Purple
-    '#e57373', // Red
-    '#f1948a', // Light Red
-    '#76d7c4', // Teal
-    '#85c1e9', // Light Blue
-  ];
+  const openEditModal = (employee: Employee) => {
+    setCurrentEmployee(employee);
+    setFormData({
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      position: employee.position,
+      email: employee.email,
+      phone: employee.phone,
+      idNumber: employee.idNumber,
+      color: employee.color,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  if (!user || user.role !== 'admin') {
+    return null;
+  }
 
   return (
     <div className='bg-white p-6 rounded-lg shadow-lg'>
-      <div className='flex items-center justify-between mb-6'>
+      <div className='flex justify-between items-center mb-6'>
         <h1 className='text-3xl font-bold text-bradley-dark-gray'>Employees</h1>
-        {user?.role === 'admin' && (
-          <button
-            className='bg-bradley-red text-white px-4 py-2 rounded-md hover:bg-bradley-dark-red'
-            onClick={() => setIsAddOpen(true)}
-          >
-            Add Employee
-          </button>
-        )}
+        <button
+          className='px-4 py-2 bg-[#f7695f] text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
+          onClick={() => setIsAddModalOpen(true)}
+        >
+          Add Employee
+        </button>
       </div>
-      <table className='w-full border-collapse'>
-        <thead>
-          <tr className='bg-gray-200'>
-            <th className='p-2 text-left'>Name</th>
-            <th className='p-2 text-left'>Position</th>
-            <th className='p-2 text-left'>Email</th>
-            {user?.role === 'admin' && (
-              <>
-                <th className='p-2 text-left'>Phone</th>
-                <th className='p-2 text-left'>ID Number</th>
-                <th className='p-2 text-left'>Color</th>
-                <th className='p-2 text-left'>Actions</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedEmployees.map((emp) => (
-            <tr key={emp.id} className='border-b'>
-              <td className='p-2'>{`${emp.lastName}, ${emp.firstName}`}</td>
-              <td className='p-2'>{emp.position}</td>
-              <td className='p-2'>{emp.email}</td>
-              {user?.role === 'admin' && (
-                <>
-                  <td className='p-2'>{emp.phone}</td>
-                  <td className='p-2'>{emp.idNumber}</td>
-                  <td className='p-2'>
-                    <div className='w-6 h-6 rounded' style={{ backgroundColor: emp.color }} />
-                  </td>
-                  <td className='p-2 flex space-x-2'>
-                    <button
-                      className='text-bradley-blue hover:text-bradley-accent'
-                      onClick={() => {
-                        setSelectedEmployee(emp);
-                        setForm({
-                          firstName: emp.firstName,
-                          lastName: emp.lastName,
-                          position: emp.position,
-                          email: emp.email,
-                          phone: emp.phone,
-                          idNumber: emp.idNumber,
-                          color: emp.color,
-                        });
-                        setIsEditOpen(true);
-                        setIsCustomColor(!colorOptions.includes(emp.color));
-                      }}
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button
-                      className='text-bradley-red hover:text-red-700'
-                      onClick={() => {
-                        setSelectedEmployee(emp);
-                        setIsDeleteOpen(true);
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {isAddOpen && (
+
+      {/* Employee List */}
+      <div className='space-y-4'>
+        {employees.map((employee) => (
+          <div key={employee.id} className='flex justify-between items-center border-b border-bradley-medium-gray pb-2'>
+            <div>
+              <p className='text-bradley-dark-gray'>
+                {employee.firstName} {employee.lastName} - {employee.position}
+              </p>
+              <p className='text-sm text-bradley-medium-gray'>{employee.email}</p>
+              <p className='text-sm text-bradley-medium-gray'>{employee.phone}</p>
+              <p className='text-sm text-bradley-medium-gray'>ID: {employee.idNumber}</p>
+            </div>
+            <div className='flex space-x-2'>
+              <button
+                className='px-3 py-1 bg-[#f7695f] text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
+                onClick={() => openEditModal(employee)}
+              >
+                Edit
+              </button>
+              <button
+                className='px-3 py-1 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]'
+                onClick={() => handleDeleteEmployee(employee.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Employee Modal */}
+      {isAddModalOpen && (
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center'>
-          <div className='bg-white p-6 rounded-lg shadow-lg w-full max-w-md'>
-            <h2 className='text-xl font-bold mb-4 text-bradley-dark-gray'>Add Employee</h2>
-            <form onSubmit={handleAddSubmit} className='space-y-4'>
+          <div className='bg-white p-6 rounded-lg shadow-lg w-full max-w-lg'>
+            <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Add Employee</h2>
+            <form onSubmit={handleAddEmployee} className='space-y-4'>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Last Name <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>First Name</label>
                 <input
                   type='text'
-                  value={form.lastName}
-                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='firstName'
+                  value={formData.firstName}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  First Name <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Last Name</label>
                 <input
                   type='text'
-                  value={form.firstName}
-                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='lastName'
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Position <span className='text-bradley-red'>*</span>
-                </label>
-                <select
-                  value={form.position}
-                  onChange={(e) => setForm({ ...form, position: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Position</label>
+                <input
+                  type='text'
+                  name='position'
+                  value={formData.position}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
-                >
-                  <option value='Service Desk Consultant'>Service Desk Consultant</option>
-                  <option value='Senior Service Desk Consultant'>
-                    Senior Service Desk Consultant
-                  </option>
-                </select>
+                />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Email <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Email</label>
                 <input
                   type='email'
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='email'
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
                 <label className='block text-sm font-medium text-bradley-dark-gray'>Phone</label>
                 <input
-                  type='tel'
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  type='text'
+                  name='phone'
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
+                  required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  ID Number <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>ID Number</label>
                 <input
                   type='text'
-                  value={form.idNumber}
-                  onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='idNumber'
+                  value={formData.idNumber}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
                 <label className='block text-sm font-medium text-bradley-dark-gray'>Color</label>
-                <div className='grid grid-cols-5 gap-2 mt-1'>
-                  {colorOptions.map((color) => (
-                    <button
-                      key={color}
-                      type='button'
-                      className={`w-8 h-8 rounded-md border ${
-                        form.color === color
-                          ? 'border-bradley-dark-red'
-                          : 'border-bradley-medium-gray'
-                      }`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => {
-                        setForm({ ...form, color });
-                        setIsCustomColor(false);
-                      }}
-                    ></button>
-                  ))}
-                  <button
-                    type='button'
-                    className={`w-8 h-8 rounded-md border flex items-center justify-center text-sm font-bold ${
-                      isCustomColor
-                        ? 'border-bradley-dark-red bg-bradley-light-gray'
-                        : 'border-bradley-medium-gray bg-bradley-light-gray'
-                    }`}
-                    onClick={() => {
-                      setForm({ ...form, color: '#000000' });
-                      setIsCustomColor(true);
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                {isCustomColor && (
-                  <input
-                    type='text'
-                    value={form.color}
-                    onChange={(e) => setForm({ ...form, color: e.target.value })}
-                    placeholder='Custom hex (e.g., #123456)'
-                    className='mt-2 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
-                  />
-                )}
+                <input
+                  type='color'
+                  name='color'
+                  value={formData.color}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full h-10 border border-bradley-medium-gray rounded-md'
+                />
               </div>
               <div className='flex justify-end space-x-2'>
                 <button
                   type='button'
-                  className='px-4 py-2 bg-bradley-light-gray rounded-md hover:bg-bradley-medium-gray text-bradley-dark-gray'
-                  onClick={() => {
-                    setIsAddOpen(false);
-                    setIsCustomColor(false);
-                  }}
+                  className='px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]'
+                  onClick={() => setIsAddModalOpen(false)}
                 >
-                  Discard
+                  Cancel
                 </button>
                 <button
                   type='submit'
-                  className='px-4 py-2 bg-bradley-red text-white rounded-md hover:bg-bradley-dark-red'
+                  className='px-4 py-2 bg-[#f7695f] text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
                 >
                   Add
                 </button>
@@ -347,171 +279,108 @@ export default function Employees() {
           </div>
         </div>
       )}
-      {isEditOpen && selectedEmployee && (
+
+      {/* Edit Employee Modal */}
+      {isEditModalOpen && currentEmployee && (
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center'>
-          <div className='bg-white p-6 rounded-lg shadow-lg w-full max-w-md'>
-            <h2 className='text-xl font-bold mb-4 text-bradley-dark-gray'>Edit Employee</h2>
-            <form onSubmit={handleEditSubmit} className='space-y-4'>
+          <div className='bg-white p-6 rounded-lg shadow-lg w-full max-w-lg'>
+            <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Edit Employee</h2>
+            <form onSubmit={handleEditEmployee} className='space-y-4'>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Last Name <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>First Name</label>
                 <input
                   type='text'
-                  value={form.lastName}
-                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='firstName'
+                  value={formData.firstName}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  First Name <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Last Name</label>
                 <input
                   type='text'
-                  value={form.firstName}
-                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='lastName'
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Position <span className='text-bradley-red'>*</span>
-                </label>
-                <select
-                  value={form.position}
-                  onChange={(e) => setForm({ ...form, position: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Position</label>
+                <input
+                  type='text'
+                  name='position'
+                  value={formData.position}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
-                >
-                  <option value='Service Desk Consultant'>Service Desk Consultant</option>
-                  <option value='Senior Service Desk Consultant'>
-                    Senior Service Desk Consultant
-                  </option>
-                </select>
+                />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  Email <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>Email</label>
                 <input
                   type='email'
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='email'
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
                 <label className='block text-sm font-medium text-bradley-dark-gray'>Phone</label>
                 <input
-                  type='tel'
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  type='text'
+                  name='phone'
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
+                  required
                 />
               </div>
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>
-                  ID Number <span className='text-bradley-red'>*</span>
-                </label>
+                <label className='block text-sm font-medium text-bradley-dark-gray'>ID Number</label>
                 <input
                   type='text'
-                  value={form.idNumber}
-                  onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
+                  name='idNumber'
+                  value={formData.idNumber}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
                   required
                 />
               </div>
               <div>
                 <label className='block text-sm font-medium text-bradley-dark-gray'>Color</label>
-                <div className='grid grid-cols-5 gap-2 mt-1'>
-                  {colorOptions.map((color) => (
-                    <button
-                      key={color}
-                      type='button'
-                      className={`w-8 h-8 rounded-md border ${
-                        form.color === color
-                          ? 'border-bradley-dark-red'
-                          : 'border-bradley-medium-gray'
-                      }`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => {
-                        setForm({ ...form, color });
-                        setIsCustomColor(false);
-                      }}
-                    ></button>
-                  ))}
-                  <button
-                    type='button'
-                    className={`w-8 h-8 rounded-md border flex items-center justify-center text-sm font-bold ${
-                      isCustomColor
-                        ? 'border-bradley-dark-red bg-bradley-light-gray'
-                        : 'border-bradley-medium-gray bg-bradley-light-gray'
-                    }`}
-                    onClick={() => {
-                      setForm({ ...form, color: '#000000' });
-                      setIsCustomColor(true);
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                {isCustomColor && (
-                  <input
-                    type='text'
-                    value={form.color}
-                    onChange={(e) => setForm({ ...form, color: e.target.value })}
-                    placeholder='Custom hex (e.g., #123456)'
-                    className='mt-2 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:ring-bradley-dark-red focus:border-bradley-dark-red'
-                  />
-                )}
+                <input
+                  type='color'
+                  name='color'
+                  value={formData.color}
+                  onChange={handleInputChange}
+                  className='mt-1 w-full h-10 border border-bradley-medium-gray rounded-md'
+                />
               </div>
               <div className='flex justify-end space-x-2'>
                 <button
                   type='button'
-                  className='px-4 py-2 bg-bradley-light-gray rounded-md hover:bg-bradley-medium-gray text-bradley-dark-gray'
+                  className='px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]'
                   onClick={() => {
-                    setIsEditOpen(false);
-                    setIsCustomColor(false);
+                    setIsEditModalOpen(false);
+                    setCurrentEmployee(null);
                   }}
                 >
-                  Discard
+                  Cancel
                 </button>
                 <button
                   type='submit'
-                  className='px-4 py-2 bg-bradley-red text-white rounded-md hover:bg-bradley-dark-red'
+                  className='px-4 py-2 bg-[#f7695f] text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
                 >
                   Save
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-      {isDeleteOpen && selectedEmployee && (
-        <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center'>
-          <div className='bg-white p-6 rounded-lg shadow-lg w-full max-w-sm'>
-            <h2 className='text-xl font-bold mb-4 text-bradley-dark-gray'>Are you sure?</h2>
-            <p className='mb-4'>
-              Delete {selectedEmployee.firstName} {selectedEmployee.lastName}?
-            </p>
-            <div className='flex justify-end space-x-2'>
-              <button
-                className='px-4 py-2 bg-bradley-light-gray rounded-md hover:bg-bradley-medium-gray text-bradley-dark-gray'
-                onClick={() => setIsDeleteOpen(false)}
-              >
-                No
-              </button>
-              <button
-                className='px-4 py-2 bg-bradley-red text-white rounded-md hover:bg-bradley-dark-red'
-                onClick={handleDelete}
-              >
-                Yes
-              </button>
-            </div>
           </div>
         </div>
       )}
