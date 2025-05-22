@@ -1,87 +1,64 @@
-import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import Navbar from '@/components/Navbar';
-import Dashboard from '@/components/Dashboard';
-import Schedule from '@/pages/Schedule';
-import TimeOffRequest from '@/components/TimeOffRequest';
-import Employees from '@/components/Employees';
-import EditProfile from '@/components/EditProfile';
-import Login from '@/pages/Login';
-import NotFound from '@/pages/NotFound';
-import ShiftCoverageRequest from '@/components/ShiftCoverageRequest';
+import { useEffect, useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import { useAuthStore } from './store/authStore';
+import Login from './pages/Login';
+import Dashboard from './components/Dashboard';
+import Schedule from './pages/Schedule';
+import TimeOffRequest from './components/TimeOffRequest';
+import Employees from './components/Employees';
+import Announcements from './components/Announcements';
+import NotFound from './pages/NotFound';
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user, checkAuth } = useAuthStore();
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    if (!user) {
-      return <Navigate to='/' replace />;
+    console.log('App useEffect triggered, location:', location.pathname);
+    if (!checkAuth() && location.pathname !== '/') {
+      navigate('/');
     }
-    return <>{children}</>;
-  };
+  }, [checkAuth, navigate, location]);
+
+  console.log('App rendered, location:', location.pathname, 'user:', user);
+
+  const isLoginPage = location.pathname === '/';
+
+  const routes = useMemo(() => (
+    <Routes>
+      <Route path="/" element={<Login />} />
+      {user && (
+        <>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/schedule" element={<Schedule />} />
+          {user.role === 'employee' && (
+            <Route path="/time-off" element={<TimeOffRequest />} />
+          )}
+          {user.role === 'admin' && (
+            <>
+              <Route path="/employees" element={<Employees />} />
+              <Route path="/announcements" element={<Announcements />} />
+              <Route path="/time-off-request" element={<TimeOffRequest />} />
+            </>
+          )}
+        </>
+      )}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  ), [user]);
 
   return (
-    <div className='min-h-screen bg-bradley-light-gray'>
-      <Navbar />
-      <div className='container mx-auto px-4 py-6'>
-        <Routes>
-          <Route path='/' element={<Login />} />
-          <Route
-            path='/dashboard'
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path='/schedule'
-            element={
-              <ProtectedRoute>
-                <Schedule />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path='/time-off'
-            element={
-              <ProtectedRoute>
-                <TimeOffRequest />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path='/employees'
-            element={
-              <ProtectedRoute>
-                {user?.role === 'admin' ? <Employees /> : <Navigate to='/dashboard' replace />}
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path='/profile'
-            element={
-              <ProtectedRoute>
-                <EditProfile />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path='/shift-coverage'
-            element={
-              <ProtectedRoute>
-                <ShiftCoverageRequest />
-              </ProtectedRoute>
-            }
-          />
-          <Route path='*' element={<NotFound />} />
-        </Routes>
+    <div className="flex flex-col min-h-screen">
+      <Navbar isLoginPage={isLoginPage} />
+      <div
+        className={`flex-1 ${isLoginPage ? 'flex items-center justify-center min-h-[calc(100vh-64px)]' : 'container mx-auto p-4 bg-transparent'}`}
+      >
+        {routes}
       </div>
+      {!isLoginPage && <Footer />}
     </div>
   );
 }

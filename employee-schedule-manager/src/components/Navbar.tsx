@@ -1,114 +1,128 @@
 import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Calendar, Clock, Users, UserCog, LogOut } from 'lucide-react';
+import { Menu, X, Home, Calendar, Users, Megaphone, Clock, LogOut } from 'lucide-react';
 
-export default function Navbar() {
-  const { user, logout } = useAuthStore();
+interface NavbarProps {
+  isLoginPage: boolean;
+}
+
+export default function Navbar({ isLoginPage }: NavbarProps) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const minimal = !user;
-  const isLoginPage = location.pathname === '/';
+  const { user, logout } = useAuthStore();
+  const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
-    localStorage.removeItem('auth-storage');
     navigate('/');
-    setIsMenuOpen(false);
   };
 
-  console.log('Navbar: minimal =', minimal);
+  if (isLoginPage) {
+    return (
+      <nav className="bg-bradley-red text-white p-4">
+        <div className="container mx-auto flex justify-center items-center">
+          <Link to="/" className="flex items-center space-x-2">
+            <img src="/logo.png" alt="Logo" className="h-8" />
+            <span className="text-xl font-bold">Bradley IT Service Desk Scheduler</span>
+          </Link>
+        </div>
+      </nav>
+    );
+  }
 
   return (
-    <nav className='bg-bradley-red text-white shadow-md'>
-      <div className={`container mx-auto px-4 py-3 flex items-center ${isLoginPage ? 'justify-center' : 'justify-between'}`}>
-        <div className='flex items-center space-x-3'>
-          <img
-            src='/logo.png'
-            alt='Bradley IT Logo'
-            className='h-10'
-            onLoad={() => console.log('Navbar: Logo loaded successfully')}
-          />
-          <span className='text-xl font-bold'>Bradley IT Service Desk Scheduler</span>
+    <nav className="bg-bradley-red text-white p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <Link to="/dashboard" className="flex items-center space-x-2">
+          <img src="/logo.png" alt="Logo" className="h-8" />
+          <span className="text-xl font-bold">Bradley IT Service Desk Scheduler</span>
+        </Link>
+
+        {/* Hamburger Menu for Mobile */}
+        <div className="md:hidden">
+          <button onClick={() => setIsOpen(!isOpen)} aria-label="Toggle menu">
+            {isOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
-        {!isLoginPage && (
-          <>
-            <div className='md:hidden'>
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className='text-white focus:outline-none'
-              >
-                {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-              </button>
-            </div>
-            <div
-              className={`md:flex items-center space-x-4 ${isMenuOpen ? 'block' : 'hidden'} md:block`}
-            >
-              {!minimal && (
-                <ul className='flex flex-col md:flex-row md:space-x-6 space-y-2 md:space-y-0'>
-                  <li>
-                    <NavLink
-                      to='/dashboard'
-                      className='flex items-center space-x-1 text-white'
-                    >
-                      <LayoutDashboard size={20} />
-                      <span className='hidden md:flex hover:underline'>Dashboard</span>
-                    </NavLink>
-                  </li>
-                  <li>
-                    <NavLink
-                      to='/schedule'
-                      className='flex items-center space-x-1 text-white'
-                    >
-                      <Calendar size={20} />
-                      <span className='hidden md:flex hover:underline'>Schedule</span>
-                    </NavLink>
-                  </li>
-                  <li>
-                    <NavLink
-                      to='/time-off'
-                      className='flex items-center space-x-1 text-white'
-                    >
-                      <Clock size={20} />
-                      <span className='hidden md:flex hover:underline'>Time Off</span>
-                    </NavLink>
-                  </li>
-                  {user?.role === 'admin' && (
-                    <li>
-                      <NavLink
-                        to='/employees'
-                        className='flex items-center space-x-1 text-white'
-                      >
-                        <Users size={20} />
-                        <span className='hidden md:flex hover:underline'>Employees</span>
-                      </NavLink>
-                    </li>
-                  )}
-                  <li>
-                    <NavLink
-                      to='/profile'
-                      className='flex items-center space-x-1 text-white'
-                    >
-                      <UserCog size={20} />
-                      <span className='hidden md:flex hover:underline'>Profile</span>
-                    </NavLink>
-                  </li>
-                  <li>
-                    <button
-                      onClick={handleLogout}
-                      className='flex items-center space-x-1 text-white'
-                    >
-                      <LogOut size={20} />
-                      <span className='hidden md:flex hover:underline'>Logout</span>
-                    </button>
-                  </li>
-                </ul>
+
+        {/* Desktop Menu */}
+        <div className="hidden md:flex space-x-4">
+          {user && (
+            <>
+              <Link to="/dashboard" className="flex items-center space-x-1 hover:underline">
+                <Home size={18} />
+                <span>Dashboard</span>
+              </Link>
+              <Link to="/schedule" className="flex items-center space-x-1 hover:underline">
+                <Calendar size={18} />
+                <span>Schedule</span>
+              </Link>
+              {user.role === 'admin' && (
+                <>
+                  <Link to="/employees" className="flex items-center space-x-1 hover:underline">
+                    <Users size={18} />
+                    <span>Employees</span>
+                  </Link>
+                  <Link to="/announcements" className="flex items-center space-x-1 hover:underline">
+                    <Megaphone size={18} />
+                    <span>Announcements</span>
+                  </Link>
+                </>
               )}
-            </div>
-          </>
-        )}
+              {user.role === 'employee' && (
+                <Link to="/time-off" className="flex items-center space-x-1 hover:underline">
+                  <Clock size={18} />
+                  <span>Time Off</span>
+                </Link>
+              )}
+              <button onClick={handleLogout} className="flex items-center space-x-1 hover:underline">
+                <LogOut size={18} />
+                <span>Logout</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Mobile Menu */}
+      {isOpen && (
+        <div className="md:hidden mt-4 space-y-2">
+          {user && (
+            <>
+              <Link to="/dashboard" className="flex items-center space-x-1 w-full hover:underline" onClick={() => setIsOpen(false)}>
+                <Home size={18} />
+                <span>Dashboard</span>
+              </Link>
+              <Link to="/schedule" className="flex items-center space-x-1 w-full hover:underline" onClick={() => setIsOpen(false)}>
+                <Calendar size={18} />
+                <span>Schedule</span>
+              </Link>
+              {user.role === 'admin' && (
+                <>
+                  <Link to="/employees" className="flex items-center space-x-1 w-full hover:underline" onClick={() => setIsOpen(false)}>
+                    <Users size={18} />
+                    <span>Employees</span>
+                  </Link>
+                  <Link to="/announcements" className="flex items-center space-x-1 w-full hover:underline" onClick={() => setIsOpen(false)}>
+                    <Megaphone size={18} />
+                    <span>Announcements</span>
+                  </Link>
+                </>
+              )}
+              {user.role === 'employee' && (
+                <Link to="/time-off" className="flex items-center space-x-1 w-full hover:underline" onClick={() => setIsOpen(false)}>
+                  <Clock size={18} />
+                  <span>Time Off</span>
+                </Link>
+              )}
+              <button onClick={() => { handleLogout(); setIsOpen(false); }} className="flex items-center space-x-1 w-full hover:underline">
+                <LogOut size={18} />
+                <span>Logout</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </nav>
   );
 }

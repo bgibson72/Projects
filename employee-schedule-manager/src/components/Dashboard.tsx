@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuthStore } from '@/store/authStore';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { Check, X } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { format, parse, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isWithinInterval } from 'date-fns';
 
 interface Shift {
   id: string;
@@ -13,12 +12,14 @@ interface Shift {
   color: string;
 }
 
-interface Request {
+interface RequestType {
   id: string;
   employee: string;
   type: 'Time Off' | 'Shift Coverage';
   date: string;
   time?: string;
+  startTime?: string;
+  endTime?: string;
   status: 'Pending' | 'Approved' | 'Denied';
 }
 
@@ -34,296 +35,456 @@ interface ShiftCoverageRequest {
 
 interface Announcement {
   id: string;
-  title: string;
-  message: string;
-  date: string;
+  content: string;
+  timestamp: string;
 }
 
 export default function Dashboard() {
   const { user } = useAuthStore();
+  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<RequestType[]>([]);
   const [shiftCoverageRequests, setShiftCoverageRequests] = useState<ShiftCoverageRequest[]>([]);
-  const [currentDate] = useState(new Date());
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [error, setError] = useState<string>('');
 
-  // Mock announcements data (to be replaced with API call later)
-  const announcements: Announcement[] = [
-    {
-      id: 'a1',
-      title: 'Team Meeting',
-      message: 'Team meeting scheduled for Wednesday at 10:00 AM in the conference room.',
-      date: '2025-05-12',
-    },
-    {
-      id: 'a2',
-      title: 'System Maintenance',
-      message: 'System maintenance will occur on Saturday from 1:00 AM to 3:00 AM. Expect downtime.',
-      date: '2025-05-11',
-    },
-  ];
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/announcements');
+      if (!response.ok) throw new Error('Failed to fetch announcements');
+      const data = await response.json();
+      setAnnouncements(data);
+    } catch (err: unknown) {
+      console.error('Dashboard: Failed to fetch announcements:', err);
+      setError('Failed to load announcements. Please try again.');
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [shiftsResponse, requestsResponse, coverageRequestsResponse] = await Promise.all([
-          fetch('http://localhost:3001/api/shifts'),
-          fetch('http://localhost:3001/api/requests'),
-          fetch('http://localhost:3001/api/shiftCoverageRequests'),
-        ]);
-        if (!shiftsResponse.ok || !requestsResponse.ok || !coverageRequestsResponse.ok) {
-          throw new Error('Failed to fetch data');
-        }
+        const shiftsResponse = await fetch('http://localhost:3001/api/shifts');
+        if (!shiftsResponse.ok) throw new Error('Failed to fetch shifts');
         const shiftsData = await shiftsResponse.json();
-        const requestsData = await requestsResponse.json();
-        const coverageRequestsData = await coverageRequestsResponse.json();
         setShifts(shiftsData);
+
+        const requestsResponse = await fetch('http://localhost:3001/api/requests');
+        if (!requestsResponse.ok) throw new Error('Failed to fetch requests');
+        const requestsData = await requestsResponse.json();
         setRequests(requestsData);
-        setShiftCoverageRequests(coverageRequestsData);
+
+        const coverageResponse = await fetch('http://localhost:3001/api/shiftCoverageRequests');
+        if (!coverageResponse.ok) throw new Error('Failed to fetch shift coverage requests');
+        const coverageData = await coverageResponse.json();
+        setShiftCoverageRequests(coverageData);
+
+        await fetchAnnouncements();
       } catch (err: unknown) {
         console.error('Dashboard: Failed to fetch data:', err);
+        setError('Failed to load dashboard data. Please try again.');
       }
     };
     fetchData();
+
+    const interval = setInterval(fetchAnnouncements, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleRequestAction = async (requestId: string, action: 'Approved' | 'Denied') => {
+  const handlePreviousWeek = () => {
+    setCurrentWeekStart((prev) => startOfWeek(new Date(prev.getTime() - 7 * 24 * 60 * 60 * 1000), { weekStartsOn: 1 }));
+  };
+
+  const handleNextWeek = () => {
+    setCurrentWeekStart((prev) => startOfWeek(new Date(prev.getTime() + 7 * 24 * 60 * 60 * 1000), { weekStartsOn: 1 }));
+  };
+
+  // Utility function to convert time to minutes since midnight
+  const timeToMinutes = (time: string): number => {
+    const [timePart, period] = time.split(' ');
+    let [hours, minutes] = timePart.split(':').map(Number);
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  // Utility function to convert minutes back to time string
+  const minutesToTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')} ${period}`;
+  };
+
+  const handleRequestAction = async (request: RequestType, action: 'Approved' | 'Denied') => {
     try {
-      const request = requests.find((req) => req.id === requestId);
-      if (!request) return;
-      const updatedRequest = { ...request, status: action };
-      // Note: mockApiServer.cjs doesn't currently have an update endpoint; we'll simulate the update
-      console.log(`Request ${requestId} ${action}`);
-      setRequests((prev) =>
-        prev.map((req) => (req.id === requestId ? updatedRequest : req))
+      const updatedRequests = requests.map(req =>
+        req.id === request.id ? { ...req, status: action } : req
       );
+      const response = await fetch('http://localhost:3001/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedRequests),
+      });
+      if (!response.ok) throw new Error('Failed to update request');
+
+      setRequests(updatedRequests);
+
+      if (action === 'Approved' && (request.time === 'All Day' || request.time === 'Partial Day')) {
+        const requestDate = parse(request.date, 'yyyy-MM-dd', new Date());
+        const overlappingShifts = shifts.filter(
+          (shift) =>
+            shift.employeeName === request.employee &&
+            isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), requestDate)
+        );
+
+        if (overlappingShifts.length > 0) {
+          const newCoverageRequests: ShiftCoverageRequest[] = [];
+          const updatedShifts = [...shifts];
+
+          for (const shift of overlappingShifts) {
+            const shiftStartMinutes = timeToMinutes(shift.startTime);
+            const shiftEndMinutes = timeToMinutes(shift.endTime);
+
+            if (request.time === 'All Day') {
+              newCoverageRequests.push({
+                id: `cr${Date.now() + Math.random()}`,
+                employeeId: shift.employeeId,
+                employeeName: request.employee,
+                date: shift.date,
+                startTime: shift.startTime,
+                endTime: shift.endTime,
+                status: 'Pending',
+              });
+              updatedShifts.splice(updatedShifts.indexOf(shift), 1);
+            } else if (request.time === 'Partial Day' && request.startTime && request.endTime) {
+              const timeOffStartMinutes = timeToMinutes(request.startTime);
+              const timeOffEndMinutes = timeToMinutes(request.endTime);
+
+              const hasOverlap =
+                (shiftStartMinutes >= timeOffStartMinutes && shiftStartMinutes < timeOffEndMinutes) ||
+                (shiftEndMinutes > timeOffStartMinutes && shiftEndMinutes <= timeOffEndMinutes) ||
+                (shiftStartMinutes <= timeOffStartMinutes && shiftEndMinutes >= timeOffEndMinutes);
+
+              if (hasOverlap) {
+                const coverageStartMinutes = Math.max(shiftStartMinutes, timeOffStartMinutes);
+                const coverageEndMinutes = Math.min(shiftEndMinutes, timeOffEndMinutes);
+                newCoverageRequests.push({
+                  id: `cr${Date.now() + Math.random()}`,
+                  employeeId: shift.employeeId,
+                  employeeName: request.employee,
+                  date: shift.date,
+                  startTime: minutesToTime(coverageStartMinutes),
+                  endTime: minutesToTime(coverageEndMinutes),
+                  status: 'Pending',
+                });
+
+                updatedShifts.splice(updatedShifts.indexOf(shift), 1);
+
+                if (shiftStartMinutes < timeOffStartMinutes) {
+                  updatedShifts.push({
+                    ...shift,
+                    id: `s${Date.now() + Math.random()}`,
+                    startTime: shift.startTime,
+                    endTime: request.startTime,
+                  });
+                }
+                if (shiftEndMinutes > timeOffEndMinutes) {
+                  updatedShifts.push({
+                    ...shift,
+                    id: `s${Date.now() + Math.random()}`,
+                    startTime: request.endTime,
+                    endTime: shift.endTime,
+                  });
+                }
+              }
+            }
+          }
+
+          if (newCoverageRequests.length > 0) {
+            const updatedCoverageRequests = [...shiftCoverageRequests, ...newCoverageRequests];
+            const coverageResponse = await fetch('http://localhost:3001/api/shiftCoverageRequests', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedCoverageRequests),
+            });
+            if (!coverageResponse.ok) throw new Error('Failed to create shift coverage requests');
+
+            setShiftCoverageRequests(updatedCoverageRequests);
+
+            const shiftsResponse = await fetch('http://localhost:3001/api/shifts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedShifts),
+            });
+            if (!shiftsResponse.ok) throw new Error('Failed to update shifts');
+
+            setShifts(updatedShifts);
+          }
+        }
+      }
     } catch (err: unknown) {
-      console.error(`Dashboard: Failed to ${action.toLowerCase()} request:`, err);
+      console.error('Dashboard: Failed to update request:', err);
+      setError('Failed to update request. Please try again.');
     }
   };
 
-  const getLowStaffingAlerts = () => {
-    const alerts: { day: Date; shiftCount: number }[] = [];
-    weekDays.forEach((day) => {
-      const dayShifts = shifts.filter(
-        (shift) => shift.date === format(day, 'yyyy-MM-dd')
+  const handleCoverShift = async (coverageRequest: ShiftCoverageRequest) => {
+    if (!user) return;
+    try {
+      const requestDate = parse(coverageRequest.date, 'yyyy-MM-dd', new Date());
+      const newStartMinutes = timeToMinutes(coverageRequest.startTime);
+      const newEndMinutes = timeToMinutes(coverageRequest.endTime);
+
+      // Check for overlapping shifts for the employee picking up the shift
+      const existingShift = shifts.find(
+        (shift) =>
+          shift.employeeId === user.id &&
+          isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), requestDate)
       );
-      if (dayShifts.length < 2) { // Threshold: less than 2 shifts is low staffing
-        alerts.push({ day, shiftCount: dayShifts.length });
+      if (existingShift) {
+        const existingStartMinutes = timeToMinutes(existingShift.startTime);
+        const existingEndMinutes = timeToMinutes(existingShift.endTime);
+        const hasShiftOverlap =
+          (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
+          (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
+          (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes);
+        if (hasShiftOverlap) {
+          throw new Error(`You are already scheduled on ${coverageRequest.date} from ${existingShift.startTime} to ${existingShift.endTime}.`);
+        }
       }
-    });
-    return alerts;
+
+      // Check for approved time off requests for the employee picking up the shift
+      const approvedTimeOff = requests.find(
+        (req) =>
+          req.employee === user.name &&
+          req.type === 'Time Off' &&
+          req.status === 'Approved' &&
+          isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), requestDate)
+      );
+      if (approvedTimeOff) {
+        if (approvedTimeOff.time === 'All Day') {
+          throw new Error(`You have approved time off on ${coverageRequest.date}.`);
+        } else if (approvedTimeOff.time === 'Partial Day' && approvedTimeOff.startTime && approvedTimeOff.endTime) {
+          const timeOffStartMinutes = timeToMinutes(approvedTimeOff.startTime);
+          const timeOffEndMinutes = timeToMinutes(approvedTimeOff.endTime);
+          const hasTimeOffOverlap =
+            (newStartMinutes >= timeOffStartMinutes && newStartMinutes < timeOffEndMinutes) ||
+            (newEndMinutes > timeOffStartMinutes && newEndMinutes <= timeOffEndMinutes) ||
+            (newStartMinutes <= timeOffStartMinutes && newEndMinutes >= timeOffEndMinutes);
+          if (hasTimeOffOverlap) {
+            throw new Error(`You have approved time off on ${coverageRequest.date} from ${approvedTimeOff.startTime} to ${approvedTimeOff.endTime}.`);
+          }
+        }
+      }
+
+      const updatedCoverageRequests = shiftCoverageRequests.map(req =>
+        req.id === coverageRequest.id ? { ...req, status: 'Covered' as 'Covered' } : req
+      );
+      const response = await fetch('http://localhost:3001/api/shiftCoverageRequests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCoverageRequests),
+      });
+      if (!response.ok) throw new Error('Failed to update shift coverage request');
+
+      const newShift: Shift = {
+        id: `s${Date.now()}`,
+        employeeId: user.id,
+        employeeName: user.name,
+        date: coverageRequest.date,
+        startTime: coverageRequest.startTime,
+        endTime: coverageRequest.endTime,
+        color: user.color || '#000000',
+      };
+      const updatedShifts = [...shifts, newShift];
+      const shiftsResponse = await fetch('http://localhost:3001/api/shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedShifts),
+      });
+      if (!shiftsResponse.ok) throw new Error('Failed to add shift');
+
+      setShiftCoverageRequests(updatedCoverageRequests);
+      setShifts(updatedShifts);
+    } catch (err: unknown) {
+      console.error('Dashboard: Failed to cover shift:', err);
+      setError(err instanceof Error ? err.message : 'Failed to cover shift. Please try again.');
+    }
   };
 
-  const lowStaffingAlerts = getLowStaffingAlerts();
-
-  // Weekly schedule data for the logged-in user (or all users for admin)
-  const weeklySchedule = weekDays.map((day) => {
-    const dayShifts = user?.role === 'admin'
-      ? shifts.filter((shift) => shift.date === format(day, 'yyyy-MM-dd'))
-      : shifts.filter(
-          (shift) => shift.date === format(day, 'yyyy-MM-dd') && shift.employeeId === user?.id
-        );
-    const dayRequests = requests.filter(
-      (req) => req.date === format(day, 'yyyy-MM-dd') && req.status === 'Approved'
-    );
-    return { day, shifts: dayShifts, requests: dayRequests };
-  });
-
-  // Filter shift coverage requests based on user role
-  const visibleShiftCoverageRequests = user?.role === 'admin'
-    ? shiftCoverageRequests
-    : shiftCoverageRequests.filter((req) => req.employeeId === user?.id);
-
   if (!user) {
-    return null;
+    return <div className="p-6 text-center text-bradley-dark-gray">Access Denied</div>;
   }
 
+  const weekDays = eachDayOfInterval({
+    start: currentWeekStart,
+    end: endOfWeek(currentWeekStart, { weekStartsOn: 1 }),
+  });
+
   return (
-    <div className='bg-bradley-light-gray p-6'>
-      <h1 className='text-3xl font-bold mb-6 text-bradley-dark-gray'>
-        Welcome, {user.name}
-      </h1>
-      <div className='space-y-6'>
-        {/* Weekly Schedule Card */}
-        <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-          <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>
-            Here’s an overview for the week of {format(weekStart, 'MM/dd')} - {format(weekEnd, 'MM/dd')}
-          </h2>
-          <div className='grid grid-cols-7 gap-2'>
-            {weeklySchedule.map((day) => (
-              <div key={day.day.toISOString()} className='border border-bradley-medium-gray p-2 rounded-md'>
-                <div className='text-center font-medium text-bradley-dark-gray'>
-                  {format(day.day, 'EEE')}
-                </div>
-                <div className='text-center text-sm text-bradley-medium-gray'>
-                  {format(day.day, 'MM/dd')}
-                </div>
-                <div className='mt-2 space-y-1'>
-                  {day.shifts.map((shift) => (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6 text-bradley-dark-gray">Dashboard</h1>
+      {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
+      <div className="space-y-6">
+        <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-bradley-dark-gray">Weekly Overview</h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={handlePreviousWeek}
+                className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
+              >
+                Previous
+              </button>
+              <button
+                onClick={handleNextWeek}
+                className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map((day) => {
+              const dayShifts = shifts.filter((shift) =>
+                user.role === 'admin'
+                  ? isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), day)
+                  : shift.employeeId === user.id && isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), day)
+              );
+              const dayRequests = requests.filter(
+                (req) =>
+                  req.type === 'Time Off' &&
+                  req.status === 'Approved' &&
+                  (user.role === 'admin'
+                    ? isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), day)
+                    : req.employee === user.name && isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), day))
+              );
+              return (
+                <div key={day.toString()} className="border border-bradley-medium-gray p-2 min-h-[100px]">
+                  <div className="text-bradley-dark-gray">{format(day, 'EEE d')}</div>
+                  {dayShifts.map((shift) => (
                     <div
                       key={shift.id}
-                      className='text-xs p-1 rounded'
-                      style={{ backgroundColor: `${shift.color}33`, color: shift.color }}
+                      className="mt-1 p-1 rounded text-sm text-white"
+                      style={{ backgroundColor: shift.color }}
                     >
-                      {shift.startTime} - {shift.endTime}
-                      {user.role === 'admin' && ` (${shift.employeeName})`}
+                      {shift.employeeName}: {shift.startTime} - {shift.endTime}
                     </div>
                   ))}
-                  {day.requests.map((request) => (
+                  {dayRequests.map((req) => (
                     <div
-                      key={request.id}
-                      className='text-xs p-1 rounded bg-gray-200 text-bradley-dark-gray'
+                      key={req.id}
+                      className="mt-1 p-1 rounded text-sm text-bradley-dark-gray bg-yellow-200"
                     >
-                      Time Off: {request.employee} {request.time || 'All Day'}
+                      {req.employee} - Off
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
-
-        {/* Horizontal Cards */}
-        <div className={`grid ${user.role === 'admin' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
-          {/* Announcements Card */}
-          <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-            <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Announcements</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
+            <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Announcements</h2>
             {announcements.length === 0 ? (
-              <p className='text-bradley-medium-gray'>No announcements at this time.</p>
+              <p className="text-lg text-bradley-medium-gray">No announcements.</p>
             ) : (
-              <div className='space-y-4'>
-                {announcements.map((announcement) => (
-                  <div key={announcement.id} className='border-b border-bradley-medium-gray pb-4'>
-                    <h3 className='text-lg font-medium text-bradley-dark-gray'>{announcement.title}</h3>
-                    <p className='text-sm text-bradley-medium-gray'>
-                      Posted on {format(new Date(announcement.date), 'MM/dd/yyyy')}
-                    </p>
-                    <p className='mt-2 text-bradley-dark-gray'>{announcement.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Merged Requests Card (Admin) or Shift Coverage Requests Card (Employee) */}
-          <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-            <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Requests</h2>
-            {user.role === 'admin' ? (
-              <>
-                {/* Time Off Requests Section */}
-                <div className='mb-6'>
-                  <h3 className='text-lg font-medium text-bradley-dark-gray mb-2'>Time Off Requests</h3>
-                  {requests.filter((req) => req.status === 'Pending').length === 0 ? (
-                    <p className='text-bradley-medium-gray'>No pending time off requests.</p>
-                  ) : (
-                    <div className='space-y-4'>
-                      {requests
-                        .filter((req) => req.status === 'Pending')
-                        .map((request) => (
-                          <div key={request.id} className='flex justify-between items-center border-b border-bradley-medium-gray pb-2'>
-                            <div>
-                              <p className='text-bradley-dark-gray'>
-                                {request.employee} - {request.type}
-                              </p>
-                              <p className='text-sm text-bradley-medium-gray'>
-                                {format(new Date(request.date), 'MM/dd/yyyy')} {request.time || 'All Day'}
-                              </p>
-                            </div>
-                            <div className='flex space-x-2'>
-                              <button
-                                className='p-2 bg-bradley-green text-white rounded-md shadow-[0_4px_0_0_#339933] active:shadow-[0_1px_1px_0_#339933]'
-                                onClick={() => handleRequestAction(request.id, 'Approved')}
-                              >
-                                <Check size={16} />
-                              </button>
-                              <button
-                                className='p-2 bg-[#ff6666] text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
-                                onClick={() => handleRequestAction(request.id, 'Denied')}
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Shift Coverage Requests Section */}
-                <div>
-                  <h3 className='text-lg font-medium text-bradley-dark-gray mb-2'>Shift Coverage Requests</h3>
-                  {visibleShiftCoverageRequests.length === 0 ? (
-                    <p className='text-bradley-medium-gray'>No shift coverage requests at this time.</p>
-                  ) : (
-                    <div className='space-y-4'>
-                      {visibleShiftCoverageRequests.map((request) => (
-                        <div key={request.id} className='border-b border-bradley-medium-gray pb-2'>
-                          <p className='text-bradley-dark-gray'>
-                            Shift Coverage: {request.employeeName}
-                          </p>
-                          <p className='text-sm text-bradley-medium-gray'>
-                            {request.date} {request.startTime} - {request.endTime}
-                          </p>
-                          <p className='text-sm text-bradley-medium-gray'>
-                            Status: {request.status}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              // Employee View: Only Shift Coverage Requests
-              <div>
-                {visibleShiftCoverageRequests.length === 0 ? (
-                  <p className='text-bradley-medium-gray'>No shift coverage requests at this time.</p>
-                ) : (
-                  <div className='space-y-4'>
-                    {visibleShiftCoverageRequests.map((request) => (
-                      <div key={request.id} className='border-b border-bradley-medium-gray pb-2'>
-                        <p className='text-bradley-dark-gray'>
-                          Shift Coverage: {request.employeeName}
-                        </p>
-                        <p className='text-sm text-bradley-medium-gray'>
-                          {request.date} {request.startTime} - {request.endTime}
-                        </p>
-                        <p className='text-sm text-bradley-medium-gray'>
-                          Status: {request.status}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Admin-Specific Section: Low Staffing Alerts */}
-          {user.role === 'admin' && (
-            <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-              <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Low Staffing Alerts</h2>
-              {lowStaffingAlerts.length === 0 ? (
-                <p className='text-bradley-medium-gray'>No low staffing alerts this week.</p>
-              ) : (
-                <div className='space-y-2'>
-                  {lowStaffingAlerts.map((alert) => (
-                    <div key={alert.day.toISOString()} className='text-bradley-red'>
-                      {format(alert.day, 'MM/dd/yyyy')} - Only {alert.shiftCount} shift{alert.shiftCount !== 1 ? 's' : ''} scheduled
+              <div className="space-y-2">
+                {announcements
+                  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                  .slice(0, 3)
+                  .map((ann) => (
+                    <div key={ann.id} className="p-2 border-b border-bradley-medium-gray">
+                      <p className="text-bradley-dark-gray">{ann.content}</p>
+                      <p className="text-sm text-bradley-medium-gray">
+                        {format(parse(ann.timestamp, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date()), 'PPpp')}
+                      </p>
                     </div>
                   ))}
+              </div>
+            )}
+          </div>
+          {user.role === 'admin' ? (
+            <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
+              <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Pending Time Off Requests</h2>
+              {requests.filter((req) => req.status === 'Pending').length === 0 ? (
+                <p className="text-lg text-bradley-medium-gray">No pending requests.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-bradley-medium-gray">
+                    <thead>
+                      <tr className="bg-bradley-light-gray">
+                        <th className="px-4 py-2 text-left text-bradley-dark-gray">Employee</th>
+                        <th className="px-4 py-2 text-left text-bradley-dark-gray">Date</th>
+                        <th className="px-4 py-2 text-left text-bradley-dark-gray">Times</th>
+                        <th className="px-4 py-2 text-left text-bradley-dark-gray">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {requests
+                        .filter((req) => req.status === 'Pending')
+                        .map((req) => {
+                          const isCovered = shiftCoverageRequests.some(
+                            (cr) =>
+                              cr.employeeName === req.employee &&
+                              cr.date === req.date &&
+                              cr.status === 'Covered'
+                          );
+                          return !isCovered ? (
+                            <tr key={req.id} className="border-t border-bradley-medium-gray">
+                              <td className="px-4 py-2 text-bradley-dark-gray">{req.employee}</td>
+                              <td className="px-4 py-2 text-bradley-dark-gray">{req.date}</td>
+                              <td className="px-4 py-2 text-bradley-dark-gray">
+                                {req.time === 'Partial Day' ? `${req.startTime} - ${req.endTime}` : req.time || 'All Day'}
+                              </td>
+                              <td className="px-4 py-2 flex space-x-2">
+                                <button
+                                  onClick={() => handleRequestAction(req, 'Approved')}
+                                  className="px-3 py-1 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleRequestAction(req, 'Denied')}
+                                  className="px-3 py-1 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                                >
+                                  Deny
+                                </button>
+                              </td>
+                            </tr>
+                          ) : null;
+                        })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
-          )}
-
-          {/* Placeholder for non-admin users to maintain layout */}
-          {user.role !== 'admin' && (
-            <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598] opacity-0 pointer-events-none'>
-              <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Placeholder</h2>
+          ) : (
+            <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
+              <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Shift Coverage Requests</h2>
+              {shiftCoverageRequests.length === 0 ? (
+                <p className="text-lg text-bradley-medium-gray">No shift coverage requests.</p>
+              ) : (
+                <div className="space-y-4">
+                  {shiftCoverageRequests
+                    .filter((req) => req.employeeId !== user.id && req.status === 'Pending')
+                    .map((req) => (
+                      <div key={req.id} className="p-4 border-b border-bradley-medium-gray">
+                        <p className="text-bradley-dark-gray">
+                          {req.employeeName} requests coverage for {req.date} from {req.startTime} to {req.endTime}
+                        </p>
+                        <button
+                          className="mt-2 px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                          onClick={() => handleCoverShift(req)}
+                        >
+                          Pick Up Shift
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>

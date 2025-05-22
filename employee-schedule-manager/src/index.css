@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-    --braldey-light-red: #E42F4B;
+    --bradley-light-red: #E42F4B; /* Fixed typo from --braldey-light-red */
     --bradley-red: #CE1432;
     --bradley-med-red: #A50000;
     --bradley-dark-red: #870F0F;
@@ -13,4 +13,12 @@
     --bradley-sky-blue: #A2BDE0;
     --bradley-blue: #2563EB;
     --bradley-accent: #3B82F6;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  min-height: 100vh;
+  background-color: #E2E8F0; /* bradley-light-gray */
 }

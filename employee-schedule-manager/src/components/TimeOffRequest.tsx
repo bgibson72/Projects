@@ -1,305 +1,269 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+import { useAuthStore } from '../store/authStore';
+import { format, parse, isBefore, startOfDay, isSameDay } from 'date-fns';
 
-interface Employee {
+interface RequestType {
   id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  email: string;
-  phone: string;
-  idNumber: string;
-  color: string;
-}
-
-interface User {
-  id: string;
-  email: string;
-  password: string;
-  name: string;
-  role: 'employee' | 'admin';
-}
-
-interface Shift {
-  id: string;
-  employeeId: string;
-  employeeName: string;
+  employee: string;
+  type: 'Time Off' | 'Shift Coverage';
   date: string;
-  startTime: string;
-  endTime: string;
-  color: string;
+  time?: string;
+  startTime?: string;
+  endTime?: string;
+  status: 'Pending' | 'Approved' | 'Denied';
 }
 
 export default function TimeOffRequest() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
-  const [requestType, setRequestType] = useState<'Full Day' | 'Partial Day'>('Full Day');
-  const [startDate, setStartDate] = useState<Date | null>(new Date());
-  const [endDate, setEndDate] = useState<Date | null>(new Date());
-  const [startTime, setStartTime] = useState('09:00 AM');
-  const [endTime, setEndTime] = useState('05:00 PM');
-  const [error, setError] = useState('');
+  const [requests, setRequests] = useState<RequestType[]>([]);
+  const [error, setError] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
+  const [formData, setFormData] = useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    timeOption: 'All Day' as 'All Day' | 'Partial Day',
+    startTime: '09:00 AM',
+    endTime: '05:00 PM',
+    type: 'Time Off' as 'Time Off' | 'Shift Coverage',
+  });
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchRequests = async () => {
       try {
-        const [shiftsResponse, employeesResponse, usersResponse] = await Promise.all([
-          fetch('http://localhost:3001/api/shifts'),
-          user?.role === 'admin' ? fetch('http://localhost:3001/api/employees') : Promise.resolve({ json: () => Promise.resolve([]) }),
-          user?.role === 'admin' ? fetch('http://localhost:3001/api/users') : Promise.resolve({ json: () => Promise.resolve([]) }),
-        ]);
-        if (!shiftsResponse.ok) throw new Error('Failed to fetch shifts');
-        const shiftsData = await shiftsResponse.json();
-        setShifts(shiftsData);
-
-        if (user?.role === 'admin') {
-          if (!(employeesResponse instanceof Response && employeesResponse.ok) || !(usersResponse instanceof Response && usersResponse.ok)) {
-            throw new Error('Failed to fetch admin data');
-          }
-          const employeesData = await employeesResponse.json();
-          const usersData = await usersResponse.json();
-          setEmployees(employeesData);
-          setUsers(usersData);
-          const nonAdminEmployees = employeesData.filter((emp: Employee) => {
-            const user = usersData.find((u: User) => u.id === emp.id);
-            return user && user.role !== 'admin';
-          });
-          if (nonAdminEmployees.length > 0) setSelectedEmployeeId(nonAdminEmployees[0].id);
+        const response = await fetch('http://localhost:3001/api/requests');
+        if (!response.ok) {
+          throw new Error('Failed to fetch requests');
         }
+        const data = await response.json();
+        setRequests(data);
       } catch (err: unknown) {
-        setError('Failed to load data. Please try again.');
-        console.error('TimeOffRequest: Failed to fetch data:', err);
+        console.error('TimeOffRequest: Failed to fetch requests:', err);
+        setError('Failed to load requests. Please try again.');
       }
     };
-    fetchData();
-  }, [user]);
+    fetchRequests();
+  }, []);
+
+  // Utility function to convert time to minutes since midnight
+  const timeToMinutes = (time: string): number => {
+    const [timePart, period] = time.split(' ');
+    let [hours, minutes] = timePart.split(':').map(Number);
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !startDate || !endDate) return;
-    if (user.role === 'admin' && !selectedEmployeeId) return;
-
+    if (!user) return;
     try {
-      const selectedEmployee = user.role === 'admin'
-        ? employees.find((emp) => emp.id === selectedEmployeeId)
-        : null;
-      const request = {
+      const requestDate = parse(formData.date, 'yyyy-MM-dd', new Date());
+      const today = startOfDay(new Date());
+      if (isBefore(requestDate, today)) {
+        throw new Error('Cannot request time off for a past date.');
+      }
+
+      // Check for overlapping time off requests
+      const newStartMinutes = formData.timeOption === 'Partial Day' ? timeToMinutes(formData.startTime) : 0;
+      const newEndMinutes = formData.timeOption === 'Partial Day' ? timeToMinutes(formData.endTime) : 1440; // End of day in minutes
+
+      const existingRequest = requests.find(
+        (req) =>
+          req.employee === user.name &&
+          isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), requestDate)
+      );
+
+      if (existingRequest) {
+        if (existingRequest.time === 'All Day') {
+          throw new Error(`You already have a time off request for ${formData.date}.`);
+        } else if (existingRequest.time === 'Partial Day' && existingRequest.startTime && existingRequest.endTime) {
+          const existingStartMinutes = timeToMinutes(existingRequest.startTime);
+          const existingEndMinutes = timeToMinutes(existingRequest.endTime);
+
+          const hasOverlap =
+            (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
+            (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
+            (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes);
+
+          if (hasOverlap) {
+            throw new Error(`You already have a time off request on ${formData.date} from ${existingRequest.startTime} to ${existingRequest.endTime}.`);
+          }
+        }
+      }
+
+      const newRequest: RequestType = {
         id: `r${Date.now()}`,
-        employee: user.role === 'admin' ? `${selectedEmployee?.firstName} ${selectedEmployee?.lastName}` : user.name,
-        type: 'Time Off',
-        date: format(startDate, 'yyyy-MM-dd'),
-        time: requestType === 'Full Day' ? 'All Day' : `${startTime}-${endTime}`,
-        status: user.role === 'admin' ? 'Approved' : 'Pending',
+        employee: user.name,
+        type: formData.type,
+        date: formData.date,
+        time: formData.timeOption,
+        startTime: formData.timeOption === 'Partial Day' ? formData.startTime : undefined,
+        endTime: formData.timeOption === 'Partial Day' ? formData.endTime : undefined,
+        status: 'Pending',
       };
+
       const response = await fetch('http://localhost:3001/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
+        body: JSON.stringify(newRequest),
       });
-      if (!response.ok) throw new Error('Failed to submit time off request');
-      navigate('/dashboard');
+      if (!response.ok) {
+        throw new Error('Failed to submit request');
+      }
+
+      setRequests((prev) => [...prev, newRequest]);
+      setSuccessMessage('Time off request submitted successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      setFormData({
+        date: format(new Date(), 'yyyy-MM-dd'),
+        timeOption: 'All Day',
+        startTime: '09:00 AM',
+        endTime: '05:00 PM',
+        type: 'Time Off',
+      });
+
+      if (newRequest.time === 'All Day') {
+        const shiftsResponse = await fetch('http://localhost:3001/api/shifts');
+        if (!shiftsResponse.ok) {
+          throw new Error('Failed to fetch shifts');
+        }
+        const shifts = await shiftsResponse.json();
+        const overlappingShifts = shifts.filter(
+          (shift: { employeeId: string; date: string }) =>
+            shift.employeeId === user.id && shift.date === newRequest.date
+        );
+
+        if (overlappingShifts.length > 0) {
+          const coverageRequestsResponse = await fetch('http://localhost:3001/api/shiftCoverageRequests');
+          if (!coverageRequestsResponse.ok) {
+            throw new Error('Failed to fetch shift coverage requests');
+          }
+          const coverageRequests = await coverageRequestsResponse.json();
+
+          const newCoverageRequests = overlappingShifts.map((shift: any) => ({
+            id: `cr${Date.now() + Math.random()}`,
+            employeeId: user.id,
+            employeeName: user.name,
+            date: shift.date,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            status: 'Pending',
+          }));
+
+          const updatedCoverageRequests = [...coverageRequests, ...newCoverageRequests];
+          const postCoverageResponse = await fetch('http://localhost:3001/api/shiftCoverageRequests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedCoverageRequests),
+          });
+          if (!postCoverageResponse.ok) {
+            throw new Error('Failed to create shift coverage requests');
+          }
+        }
+      }
     } catch (err: unknown) {
-      setError('Failed to submit time off request. Please try again.');
-      console.error('TimeOffRequest: Failed to submit:', err);
+      console.error('TimeOffRequest: Failed to submit request:', err);
+      setError(err instanceof Error ? err.message : 'Failed to submit request. Please try again.');
     }
   };
 
-  const format = (date: Date, formatStr: string) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: formatStr.includes('yyyy') ? 'numeric' : undefined,
-      month: formatStr.includes('MM') ? 'numeric' : undefined,
-      day: formatStr.includes('dd') ? '2-digit' : undefined,
-    })
-      .format(date)
-      .replace(/\//g, '-');
-  };
-
-  // Helper function to parse time (e.g., "09:00 AM") to minutes for comparison
-  const parseTimeToMinutes = (time: string): number => {
-    const [timePart, period] = time.split(' ');
-    const [hours, minutes] = timePart.split(':').map(Number);
-    let adjustedHours = hours;
-    if (period === 'PM' && hours !== 12) adjustedHours += 12;
-    if (period === 'AM' && hours === 12) adjustedHours = 0;
-    return adjustedHours * 60 + minutes;
-  };
-
-  // Filter and sort shifts within the selected date range for the current employee
-  const conflictingShifts = startDate && endDate
-    ? shifts
-        .filter((shift) => {
-          if (user?.role !== 'employee') return false; // Only show for employees
-          if (shift.employeeId !== user?.id) return false; // Only show employee's own shifts
-          const shiftDate = new Date(shift.date);
-          return shiftDate >= startDate && shiftDate <= endDate;
-        })
-        .sort((a, b) => {
-          // Sort by start time first
-          const startTimeA = parseTimeToMinutes(a.startTime);
-          const startTimeB = parseTimeToMinutes(b.startTime);
-          if (startTimeA !== startTimeB) {
-            return startTimeA - startTimeB;
-          }
-          // If start times are equal, sort by date
-          const dateA = new Date(a.date);
-          const dateB = new Date(b.date);
-          return dateA.getTime() - dateB.getTime();
-        })
-    : [];
-
   if (!user) {
-    return null;
+    return <div className="p-6 text-center text-bradley-dark-gray">Access Denied</div>;
   }
 
   return (
-    <div className='bg-white p-6 rounded-lg shadow-lg'>
-      <h1 className='text-3xl font-bold mb-6 text-bradley-dark-gray'>
-        {user.role === 'admin' ? 'Create Time Off for Employee' : 'Time Off Request'}
-      </h1>
-      {error && <p className='text-bradley-red mb-4'>{error}</p>}
-      <div className='grid md:grid-cols-2 gap-6'>
-        {/* Form Section */}
-        <div>
-          <form onSubmit={handleSubmit} className='space-y-4'>
-            {/* Employee Dropdown (Admin Only) */}
-            {user.role === 'admin' && (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6 text-bradley-dark-gray">Time Off Request</h1>
+      {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
+      {successMessage && (
+        <p className="text-bradley-blue text-sm mb-4 bg-bradley-light-gray p-2 rounded">{successMessage}</p>
+      )}
+      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley mb-6">
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Submit a Time Off Request</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-bradley-dark-gray">Date</label>
+            <input
+              type="date"
+              value={formData.date}
+              min={format(new Date(), 'yyyy-MM-dd')} // Prevent past dates
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-bradley-dark-gray">Time</label>
+            <select
+              value={formData.timeOption}
+              onChange={(e) => setFormData({ ...formData, timeOption: e.target.value as 'All Day' | 'Partial Day' })}
+              className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+            >
+              <option value="All Day">All Day</option>
+              <option value="Partial Day">Partial Day</option>
+            </select>
+          </div>
+          {formData.timeOption === 'Partial Day' && (
+            <div className="space-y-2">
               <div>
-                <label className='block text-sm font-medium text-bradley-dark-gray'>Employee</label>
-                <select
-                  value={selectedEmployeeId}
-                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                  className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white bg-opacity-100'
+                <label className="block text-sm font-medium text-bradley-dark-gray">Start Time</label>
+                <input
+                  type="time"
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
                   required
-                >
-                  <option value='' disabled>Select Employee</option>
-                  {employees
-                    .filter((emp) => {
-                      const employeeUser = users.find((u) => u.id === emp.id);
-                      return employeeUser && employeeUser.role !== 'admin';
-                    })
-                    .map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.firstName} {emp.lastName}
-                      </option>
-                    ))}
-                </select>
+                />
               </div>
-            )}
-
-            {/* Request Type Radio Buttons */}
-            <div>
-              <label className='block text-sm font-medium text-bradley-dark-gray'>Request Type</label>
-              <div className='mt-1 flex space-x-4'>
-                <label className='flex items-center'>
-                  <input
-                    type='radio'
-                    name='requestType'
-                    value='Full Day'
-                    checked={requestType === 'Full Day'}
-                    onChange={() => setRequestType('Full Day')}
-                    className='mr-2'
-                  />
-                  Full Day
-                </label>
-                <label className='flex items-center'>
-                  <input
-                    type='radio'
-                    name='requestType'
-                    value='Partial Day'
-                    checked={requestType === 'Partial Day'}
-                    onChange={() => setRequestType('Partial Day')}
-                    className='mr-2'
-                  />
-                  Partial Day
-                </label>
+              <div>
+                <label className="block text-sm font-medium text-bradley-dark-gray">End Time</label>
+                <input
+                  type="time"
+                  value={formData.endTime}
+                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                  required
+                />
               </div>
             </div>
-
-            {/* Start Date */}
-            <div>
-              <label className='block text-sm font-medium text-bradley-dark-gray'>Start Date</label>
-              <DatePicker
-                selected={startDate}
-                onChange={(date: Date) => date && setStartDate(date)}
-                dateFormat='MM/dd/yyyy'
-                className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
-                required
-              />
-            </div>
-
-            {/* End Date */}
-            <div>
-              <label className='block text-sm font-medium text-bradley-dark-gray'>End Date</label>
-              <DatePicker
-                selected={endDate}
-                onChange={(date: Date) => date && setEndDate(date)}
-                dateFormat='MM/dd/yyyy'
-                className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
-                minDate={startDate || new Date()}
-                required
-              />
-            </div>
-
-            {/* Start Time and End Time (Partial Day Only) */}
-            {requestType === 'Partial Day' && (
-              <>
-                <div>
-                  <label className='block text-sm font-medium text-bradley-dark-gray'>Start Time</label>
-                  <input
-                    type='text'
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
-                    required
-                  />
-                </div>
-                <div>
-                  <label className='block text-sm font-medium text-bradley-dark-gray'>End Time</label>
-                  <input
-                    type='text'
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className='mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray'
-                    required
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Submit Button */}
-            <div className='flex justify-start'>
-              <button
-                type='submit'
-                className='px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#b71c1c] active:shadow-[0_1px_1px_0_#b71c1c]'
-              >
-                Submit
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Conflicting Shifts Section (Employee Only) */}
-        {user.role === 'employee' && (
-          <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-            <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Existing Shifts</h2>
-            {conflictingShifts.length === 0 ? (
-              <p className='text-bradley-medium-gray'>No shifts scheduled in the selected date range.</p>
-            ) : (
-              <div className='space-y-2'>
-                {conflictingShifts.map((shift) => (
-                  <div key={shift.id} className='text-sm text-bradley-dark-gray'>
-                    {shift.startTime} - {shift.endTime} on {format(new Date(shift.date), 'MM-dd-yyyy')}
-                  </div>
-                ))}
-              </div>
-            )}
+          )}
+          <button
+            type="submit"
+            className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+          >
+            Submit Request
+          </button>
+        </form>
+      </div>
+      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Your Requests</h2>
+        {requests.length === 0 ? (
+          <p className="text-lg text-bradley-medium-gray">No requests found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-bradley-medium-gray">
+              <thead>
+                <tr className="bg-bradley-light-gray">
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Date</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Time</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Type</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests
+                  .filter((req) => req.employee === user.name)
+                  .map((req) => (
+                    <tr key={req.id} className="border-t border-bradley-medium-gray">
+                      <td className="px-4 py-2 text-bradley-dark-gray">{req.date}</td>
+                      <td className="px-4 py-2 text-bradley-dark-gray">
+                        {req.time === 'Partial Day' ? `${req.startTime} - ${req.endTime}` : req.time || 'All Day'}
+                      </td>
+                      <td className="px-4 py-2 text-bradley-dark-gray">{req.type}</td>
+                      <td className="px-4 py-2 text-bradley-dark-gray">{req.status}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
