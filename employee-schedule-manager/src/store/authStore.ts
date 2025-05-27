@@ -1,7 +1,11 @@
+// NOTE: The 'role' field on the User object (from Firestore) is the sole source of truth for admin/employee access control throughout the app.
+// Do NOT use 'addedByAdmin' for access checks. Only 'role' should be used to determine admin privileges.
+// This ensures that only users with role === 'admin' can access admin-only features, regardless of how their account was created.
+
 import { create } from 'zustand';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export interface User {
@@ -16,7 +20,7 @@ export interface User {
 interface AuthState {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => boolean;
 }
@@ -24,23 +28,45 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
-  login: async (username: string, password: string) => {
+  login: async (email: string, password: string) => {
     try {
-      const email = `${username}@employeeschedulemanager.com`; // Map username to email
+      console.log('[LOGIN] Attempting signInWithEmailAndPassword for', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
-
-      // Fetch additional user data from Firestore
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      await firebaseUser.getIdToken(true);
+      const idTokenResult = await firebaseUser.getIdTokenResult();
+      console.log('[LOGIN] Custom claims:', idTokenResult.claims);
+      console.log('[LOGIN] Firebase UID:', firebaseUser.uid);
+      // Fetch additional user data from Firestore (employees collection)
+      let userDoc = await getDoc(doc(db, 'employees', firebaseUser.uid));
+      console.log('[LOGIN] Firestore getDoc by UID:', userDoc.exists());
       if (!userDoc.exists()) {
-        throw new Error('User data not found in Firestore');
+        // Try by email if not found by UID
+        const q = query(collection(db, 'employees'), where('email', '==', firebaseUser.email));
+        const snapshot = await getDocs(q);
+        console.log('[LOGIN] Firestore getDocs by email:', snapshot.size);
+        if (!snapshot.empty) {
+          userDoc = snapshot.docs[0];
+        }
       }
-
+      if (!userDoc.exists()) {
+        console.error('[LOGIN] User data not found in employees collection for UID or email:', firebaseUser.uid, firebaseUser.email);
+        throw new Error('User data not found in the employees database. Please contact your administrator.');
+      }
       const userData = userDoc.data() as User;
       set({ user: { ...userData, id: firebaseUser.uid }, isLoading: false });
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
+    } catch (error: any) {
+      let message = 'An unknown error occurred.';
+      if (error.code === 'auth/user-not-found') {
+        message = 'No user found with that username.';
+      } else if (error.code === 'auth/wrong-password') {
+        message = 'Incorrect password.';
+      } else if (error.message) {
+        message = error.message;
+      }
+      console.error('[LOGIN] Error:', error);
+      set({ isLoading: false });
+      throw new Error(message);
     }
   },
   logout: async () => {
@@ -53,14 +79,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 // Listen for auth state changes
 onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
   if (firebaseUser) {
-    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+    console.log('[AUTH STATE] Auth state changed, user is signed in:', firebaseUser.uid);
+    let userDoc = await getDoc(doc(db, 'employees', firebaseUser.uid));
+    console.log('[AUTH STATE] Firestore getDoc by UID:', userDoc.exists());
+    if (!userDoc.exists()) {
+      // Try by email if not found by UID
+      const q = query(collection(db, 'employees'), where('email', '==', firebaseUser.email));
+      const snapshot = await getDocs(q);
+      console.log('[AUTH STATE] Firestore getDocs by email:', snapshot.size);
+      if (!snapshot.empty) {
+        userDoc = snapshot.docs[0];
+      }
+    }
     if (userDoc.exists()) {
       const userData = userDoc.data() as User;
       useAuthStore.setState({ user: { ...userData, id: firebaseUser.uid }, isLoading: false });
     } else {
+      console.error('[AUTH STATE] User data not found in employees collection for UID or email:', firebaseUser.uid, firebaseUser.email);
       useAuthStore.setState({ user: null, isLoading: false });
     }
   } else {
+    console.log('[AUTH STATE] Auth state changed, user is signed out');
     useAuthStore.setState({ user: null, isLoading: false });
   }
 });

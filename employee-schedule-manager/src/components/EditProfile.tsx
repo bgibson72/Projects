@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { Eye, EyeOff } from 'lucide-react';
+import { auth } from '../firebase';
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 
 export default function EditProfile() {
   const navigate = useNavigate();
-  const { user, updateUser } = useAuthStore();
+  const { user } = useAuthStore();
   const [personalFormData, setPersonalFormData] = useState({
     firstName: '',
     lastName: '',
@@ -30,8 +32,8 @@ export default function EditProfile() {
       setPersonalFormData({
         firstName: firstName || '',
         lastName: lastName || '',
-        phone: user.phone || '',
-        email: user.email,
+        phone: '', // fallback if not present
+        email: '', // fallback if not present
       });
     }
   }, [user]);
@@ -61,7 +63,6 @@ export default function EditProfile() {
         body: JSON.stringify(updates),
       });
       if (!response.ok) throw new Error('Failed to update employee');
-      updateUser(updates);
       setError('');
       navigate('/dashboard');
     } catch (err: unknown) {
@@ -77,38 +78,25 @@ export default function EditProfile() {
       setPasswordError('New password and verify password do not match.');
       return;
     }
-    if (passwordFormData.currentPassword !== user.password) {
-      setPasswordError('Current password is incorrect.');
-      return;
-    }
     setShowConfirmPopup(true);
   };
 
   const confirmPasswordChange = async () => {
     if (!user) return;
     try {
-      const updates = {
-        ...user,
-        password: passwordFormData.newPassword,
-      };
-      const response = await fetch(`/api/employees/${user.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (!response.ok) throw new Error('Failed to update password');
-      updateUser(updates);
+      // Use Firebase Auth to re-authenticate and update password
+      const { currentPassword, newPassword } = passwordFormData;
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.email) throw new Error('User not found.');
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, newPassword);
       setPasswordError('');
-      setPasswordFormData({
-        currentPassword: '',
-        newPassword: '',
-        verifyPassword: '',
-      });
+      setPasswordFormData({ currentPassword: '', newPassword: '', verifyPassword: '' });
       setShowConfirmPopup(false);
       navigate('/dashboard');
-    } catch (err: unknown) {
+    } catch (err: any) {
       setPasswordError('Failed to update password. Please try again.');
-      console.error('EditProfile: Failed to update password:', err);
       setShowConfirmPopup(false);
     }
   };

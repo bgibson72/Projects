@@ -1,232 +1,348 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Pencil, KeyRound, Trash2, Plus } from 'lucide-react';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { auth } from '../firebase';
 import { useAuthStore } from '../store/authStore';
-import { Edit, Lock, Trash, Eye, EyeOff, Plus } from 'lucide-react';
 
-interface Employee {
-  id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  username: string;
-  phone: string;
-  color: string;
-  role: 'admin' | 'employee';
-  addedByAdmin?: boolean;
-}
+const pastelColors = [
+  '#E57373', // darker pink
+  '#FFD54F', // darker yellow
+  '#4DB6AC', // darker mint
+  '#9575CD', // darker lavender
+  '#FFB74D', // darker peach
+  '#64B5F6', // darker blue
+  '#81C784', // darker green
+];
 
-export default function Employees() {
+export default function Employees({ employees, setEmployees }: { employees: any[], setEmployees: (emps: any[]) => void }) {
   const { user } = useAuthStore();
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [error, setError] = useState<string>('');
-  const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
-  const [changePasswordEmployee, setChangePasswordEmployee] = useState<Employee | null>(null);
-  const [newPassword, setNewPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState<boolean>(false);
-  const [showAddCustomColorPicker, setShowAddCustomColorPicker] = useState<boolean>(false);
-  const [showEditCustomColorPicker, setShowEditCustomColorPicker] = useState<boolean>(false);
-  const [addEmployeeForm, setAddEmployeeForm] = useState({
-    firstName: '',
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
     lastName: '',
-    position: '',
+    firstName: '',
     username: '',
+    position: '',
+    email: '',
     phone: '',
-    color: '#A3BFFA', // Default to first pastel color
+    color: pastelColors[0],
+    tempPassword: '',
   });
-
-  // Define pastel colors for selection
-  const pastelColors = [
-    '#A3BFFA', // Pastel Blue
-    '#FBB6CE', // Pastel Pink
-    '#B5EAD7', // Pastel Green
-    '#FFDAC1', // Pastel Peach
-    '#C7CEEA', // Pastel Lavender
-    '#FFD1DC', // Pastel Rose
-    '#E2F0CB', // Pastel Mint
-  ];
+  const [colorChoice, setColorChoice] = useState(pastelColors[0]);
+  const [customColor, setCustomColor] = useState('');
+  const [showCustomColor, setShowCustomColor] = useState(false);
+  const [editEmployee, setEditEmployee] = useState<any>(null);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editColorChoice, setEditColorChoice] = useState(pastelColors[0]);
+  const [editCustomColor, setEditCustomColor] = useState('');
+  const [showEditCustomColor, setShowEditCustomColor] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmployee, setResetEmployee] = useState<any>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [verifyPassword, setVerifyPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showVerifyPassword, setShowVerifyPassword] = useState(false);
+  const [showAffirm, setShowAffirm] = useState(false);
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState<string>('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string>('');
+  const [resetError, setResetError] = useState<string>('');
 
   useEffect(() => {
+    // Fetch employees from Firestore on mount
     const fetchEmployees = async () => {
-      try {
-        setEmployees([]);
-        const response = await fetch('http://localhost:3001/api/employees');
-        if (!response.ok) {
-          throw new Error('Failed to fetch employees');
-        }
-        const responseData = await response.json();
-        console.log('Fetched employees response:', responseData);
-        const data = Array.isArray(responseData) ? responseData : responseData.data || [];
-        const filteredData = data.filter((emp: Employee) => {
-          if (emp.role === 'admin') {
-            return false;
-          }
-          return true;
-        });
-        console.log('Client-side filtered employees:', filteredData);
-        setEmployees(filteredData);
-      } catch (err: unknown) {
-        console.error('Employees: Failed to fetch employees:', err);
-        setError('Failed to load employees. Please try again.');
-      }
+      const querySnapshot = await getDocs(collection(db, 'employees'));
+      const emps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEmployees(emps);
     };
     fetchEmployees();
+    // eslint-disable-next-line
   }, []);
 
-  const handleAddEmployeeSubmit = async (e: React.FormEvent) => {
+  const handleColorSelect = (color: string) => {
+    setColorChoice(color);
+    setShowCustomColor(false);
+    setCustomColor('');
+  };
+
+  const handleCustomColor = () => {
+    setShowCustomColor(true);
+    setColorChoice('');
+  };
+
+  const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddError('');
+    setAddLoading(true);
     try {
-      const newEmployee: Employee = {
-        id: `u${Date.now()}`,
-        firstName: addEmployeeForm.firstName,
-        lastName: addEmployeeForm.lastName,
-        position: addEmployeeForm.position,
-        username: addEmployeeForm.username,
-        phone: addEmployeeForm.phone,
-        color: addEmployeeForm.color,
-        role: 'employee',
-        addedByAdmin: true,
-      };
-
-      // Add employee to /api/employees
-      const employeeResponse = await fetch('http://localhost:3001/api/employees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEmployee),
+      const empData = { ...newEmployee, color: showCustomColor ? customColor : colorChoice };
+      // Call the Cloud Function to create the Auth user, Firestore doc, and set custom claim
+      const functions = getFunctions();
+      const createEmployee = httpsCallable(functions, 'createEmployee');
+      const result: any = await createEmployee({
+        email: empData.email,
+        tempPassword: empData.tempPassword,
+        firstName: empData.firstName,
+        lastName: empData.lastName,
+        username: empData.username,
+        position: empData.position,
+        phone: empData.phone,
+        color: empData.color
       });
-      if (!employeeResponse.ok) {
-        throw new Error('Failed to add employee');
-      }
-
-      // Add user to /api/users with default password and reset requirement
-      const usersResponse = await fetch('http://localhost:3001/api/users');
-      if (!usersResponse.ok) {
-        throw new Error('Failed to fetch users');
-      }
-      const users = await usersResponse.json();
-      const newUser = {
-        id: newEmployee.id,
-        username: newEmployee.username,
-        password: 'password123',
-        name: `${newEmployee.firstName} ${newEmployee.lastName}`.trim(),
-        role: 'employee',
-        passwordResetRequired: true,
-      };
-      const updatedUsers = [...users, newUser];
-      const putUsersResponse = await fetch('http://localhost:3001/api/users', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedUsers),
-      });
-      if (!putUsersResponse.ok) {
-        throw new Error('Failed to update users');
-      }
-
-      setEmployees((prev) => [...prev, newEmployee]);
-      setAddEmployeeForm({
-        firstName: '',
-        lastName: '',
-        position: '',
-        username: '',
-        phone: '',
-        color: '#A3BFFA',
-      });
-      setShowAddCustomColorPicker(false);
-      setIsAddEmployeeOpen(false);
-    } catch (err: unknown) {
-      console.error('Employees: Failed to add employee:', err);
-      setError('Failed to add employee. Please try again.');
+      // Fetch updated employees from Firestore
+      const querySnapshot = await getDocs(collection(db, 'employees'));
+      const emps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEmployees(emps);
+      setShowAdd(false);
+      setNewEmployee({ lastName: '', firstName: '', username: '', position: '', email: '', phone: '', color: pastelColors[0], tempPassword: '' });
+      setColorChoice(pastelColors[0]);
+      setCustomColor('');
+      setShowCustomColor(false);
+    } catch (err: any) {
+      setAddError(err.message || 'Failed to add employee.');
+    } finally {
+      setAddLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      const response = await fetch(`http://localhost:3001/api/employees/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to delete employee');
-      }
-      setEmployees(employees.filter(emp => emp.id !== id));
-    } catch (err: unknown) {
-      console.error('Employees: Failed to delete employee:', err);
-      setError('Failed to delete employee. Please try again.');
-    }
+  // Edit Employee handlers
+  const handleEditClick = (emp: any) => {
+    setEditEmployee(emp);
+    setEditColorChoice(emp.color);
+    setEditCustomColor('');
+    setShowEditCustomColor(false);
+    setShowEdit(true);
   };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
+  const handleEditColorSelect = (color: string) => {
+    setEditColorChoice(color);
+    setShowEditCustomColor(false);
+    setEditCustomColor('');
+  };
+  const handleEditCustomColor = () => {
+    setShowEditCustomColor(true);
+    setEditColorChoice('');
+  };
+  const handleEditEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editEmployee) return;
+    setEditLoading(true);
+    setEditError('');
     try {
-      const response = await fetch(`http://localhost:3001/api/employees/${editEmployee.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editEmployee),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update employee');
+      const updated = { ...editEmployee, color: showEditCustomColor ? editCustomColor : editColorChoice };
+      // If email has changed, update in Auth and Firestore via Cloud Function
+      if (editEmployee.email !== employees.find(emp => emp.id === editEmployee.id)?.email) {
+        const functions = getFunctions();
+        const updateEmployeeEmail = httpsCallable(functions, 'updateEmployeeEmail');
+        await updateEmployeeEmail({ uid: editEmployee.id, newEmail: editEmployee.email });
+      } else {
+        // Otherwise, just update Firestore
+        await updateDoc(doc(db, 'employees', editEmployee.id), updated);
       }
-      const updatedEmployee = await response.json();
-      setEmployees(employees.map(emp => emp.id === updatedEmployee.id ? updatedEmployee : emp));
+      setEmployees(employees.map((emp: any) => emp.id === editEmployee.id ? { ...updated, id: editEmployee.id } : emp));
+      setShowEdit(false);
       setEditEmployee(null);
-      setShowEditCustomColorPicker(false);
-    } catch (err: unknown) {
-      console.error('Employees: Failed to update employee:', err);
-      setError('Failed to update employee. Please try again.');
+      setEditColorChoice(pastelColors[0]);
+      setEditCustomColor('');
+      setShowEditCustomColor(false);
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setEditLoading(false);
     }
   };
-
-  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+  // Password Reset handlers
+  const handleResetClick = (emp: any) => {
+    setResetEmployee(emp);
+    setResetPassword('');
+    setVerifyPassword('');
+    setShowPassword(false);
+    setShowVerifyPassword(false);
+    setShowResetPassword(true);
+  };
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!changePasswordEmployee || !newPassword) return;
+    setResetError('');
     try {
-      const response = await fetch('http://localhost:3001/api/users');
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
-      }
-      interface User {
-        id: string;
-        password?: string;
-        passwordResetRequired?: boolean;
-      }
-      const users = await response.json();
-      const updatedUsers = users.map((u: User) =>
-        u.id === changePasswordEmployee.id ? { ...u, password: newPassword, passwordResetRequired: true } : u
-      );
-      const putResponse = await fetch('http://localhost:3001/api/users', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedUsers),
-      });
-      if (!putResponse.ok) {
-        throw new Error('Failed to update password');
-      }
-      setChangePasswordEmployee(null);
-      setNewPassword('');
-      setShowPassword(false);
-    } catch (err: unknown) {
-      console.error('Employees: Failed to update password:', err);
-      setError('Failed to update password. Please try again.');
+      // Here you would call your backend to reset the password
+      setShowAffirm(true);
+    } catch (err: any) {
+      setResetError(err?.message || 'Failed to reset password. Please try again.');
     }
   };
+  const handleAffirmYes = () => {
+    // Here you would call your backend to reset the password
+    setShowAffirm(false);
+    setShowResetPassword(false);
+    setResetEmployee(null);
+    setResetPassword('');
+    setVerifyPassword('');
+  };
+  const handleAffirmNo = () => {
+    setShowAffirm(false);
+  };
 
-  if (!user || user.role !== 'admin') {
-    return <div className="p-6 text-center text-bradley-dark-gray">Access Denied</div>;
-  }
+  const handleDeleteEmployee = async (empId: string) => {
+    await deleteDoc(doc(db, 'employees', empId));
+    setEmployees(employees.filter(emp => emp.id !== empId));
+  };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-bradley-dark-gray">Employees</h1>
-        <button
-          className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-          onClick={() => setIsAddEmployeeOpen(true)}
-        >
-          Add Employee
-        </button>
+    <div className="p-6 md:pl-48">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Employees</h1>
+        {user?.role === 'admin' && (
+          <button
+            className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F] flex items-center gap-2"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={18} /> Add Employee
+          </button>
+        )}
       </div>
-      {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
+      {/* Add Employee Popup */}
+      {showAdd && user?.role === 'admin' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Add Employee</h2>
+            {addError && (
+              <div className="mb-2 p-2 rounded bg-red-100 text-red-800 border border-red-300 text-center font-medium">
+                {addError}
+              </div>
+            )}
+            <form onSubmit={handleAddEmployee} className="space-y-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-1/2 bg-white"
+                  value={newEmployee.lastName}
+                  onChange={e => setNewEmployee({ ...newEmployee, lastName: e.target.value })}
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-1/2 bg-white"
+                  value={newEmployee.firstName}
+                  onChange={e => setNewEmployee({ ...newEmployee, firstName: e.target.value })}
+                  required
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Username"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={newEmployee.username}
+                onChange={e => setNewEmployee({ ...newEmployee, username: e.target.value })}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Position"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={newEmployee.position}
+                onChange={e => setNewEmployee({ ...newEmployee, position: e.target.value })}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Email Address"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={newEmployee.email}
+                onChange={e => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                required
+              />
+              <input
+                type="tel"
+                placeholder="Phone Number"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={newEmployee.phone}
+                onChange={e => setNewEmployee({ ...newEmployee, phone: e.target.value })}
+                required
+              />
+              <div>
+                <label className="block mb-1 font-medium">Temporary Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Temporary Password"
+                    className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                    value={newEmployee.tempPassword}
+                    onChange={e => setNewEmployee({ ...newEmployee, tempPassword: e.target.value })}
+                    required
+                  />
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-bradley-dark-gray"
+                    onClick={() => setShowPassword(v => !v)}
+                  >
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.956 9.956 0 012.223-3.592m3.1-2.727A9.956 9.956 0 0112 5c4.478 0 8.268 2.943 9.542 7a9.973 9.973 0 01-4.293 5.411M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 6L6 6" /></svg>
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1 font-medium">Color Assignment</label>
+                <div className="flex gap-2 items-center">
+                  {pastelColors.map((color) => (
+                    <button
+                      type="button"
+                      key={color}
+                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${colorChoice === color ? 'border-bradley-red' : 'border-bradley-dark-gray'}`}
+                      style={{ background: color }}
+                      onClick={() => handleColorSelect(color)}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${showCustomColor ? 'border-bradley-red' : 'border-bradley-dark-gray'}`}
+                    onClick={handleCustomColor}
+                  >
+                    <Plus size={16} />
+                  </button>
+                  {showCustomColor && (
+                    <input
+                      type="text"
+                      placeholder="#HEX"
+                      className="ml-2 border border-bradley-dark-gray px-2 py-1 rounded w-24 bg-white"
+                      value={customColor}
+                      onChange={e => setCustomColor(e.target.value)}
+                      required
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
+                  onClick={() => {
+                    setShowAdd(false);
+                    setNewEmployee({ lastName: '', firstName: '', username: '', position: '', email: '', phone: '', color: pastelColors[0], tempPassword: '' });
+                    setColorChoice(pastelColors[0]);
+                    setCustomColor('');
+                    setShowCustomColor(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                  disabled={addLoading}
+                >
+                  {addLoading ? 'Adding...' : 'Add'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Employee List</h2>
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Current Roster</h2>
         {employees.length === 0 ? (
           <p className="text-lg text-bradley-medium-gray">No employees found.</p>
         ) : (
@@ -234,49 +350,38 @@ export default function Employees() {
             <table className="min-w-full border border-bradley-medium-gray">
               <thead>
                 <tr className="bg-bradley-light-gray">
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">First Name</th>
                   <th className="px-4 py-2 text-left text-bradley-dark-gray">Last Name</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">First Name</th>
                   <th className="px-4 py-2 text-left text-bradley-dark-gray">Position</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Username</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Phone</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Email Address</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Phone Number</th>
                   <th className="px-4 py-2 text-left text-bradley-dark-gray">Color</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Actions</th>
+                  {user?.role === 'admin' && (
+                    <th className="px-4 py-2 text-center text-bradley-dark-gray">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {employees.map((emp) => (
                   <tr key={emp.id} className="border-t border-bradley-medium-gray">
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.firstName}</td>
                     <td className="px-4 py-2 text-bradley-dark-gray">{emp.lastName}</td>
+                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.firstName}</td>
                     <td className="px-4 py-2 text-bradley-dark-gray">{emp.position}</td>
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.username}</td>
+                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.email}</td>
                     <td className="px-4 py-2 text-bradley-dark-gray">{emp.phone}</td>
                     <td className="px-4 py-2">
-                      <div className="w-6 h-6 rounded" style={{ backgroundColor: emp.color }} />
+                      <span className="inline-block w-6 h-6 rounded-full border border-bradley-dark-gray" style={{ background: emp.color }}></span>
                     </td>
-                    <td className="px-4 py-2 flex space-x-2">
-                      <button
-                        onClick={() => setEditEmployee(emp)}
-                        className="p-1 text-bradley-dark-gray hover:text-bradley-blue focus:outline-none"
-                        title="Edit"
-                      >
-                        <Edit size={20} />
-                      </button>
-                      <button
-                        onClick={() => setChangePasswordEmployee(emp)}
-                        className="p-1 text-bradley-dark-gray hover:text-bradley-blue focus:outline-none"
-                        title="Change Password"
-                      >
-                        <Lock size={20} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(emp.id)}
-                        className="p-1 text-bradley-dark-gray hover:text-bradley-red focus:outline-none"
-                        title="Delete"
-                      >
-                        <Trash size={20} />
-                      </button>
-                    </td>
+                    {user?.role === 'admin' && (
+                      <td className="px-4 py-2 flex space-x-2 justify-center">
+                        <span title="Edit" className="cursor-pointer text-black" onClick={() => handleEditClick(emp)}>
+                          <Pencil size={18} />
+                        </span>
+                        <span title="Reset Password" className="cursor-pointer text-black" onClick={() => handleResetClick(emp)}>
+                          <KeyRound size={18} />
+                        </span>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -284,302 +389,254 @@ export default function Employees() {
           </div>
         )}
       </div>
-
-      {/* Add Employee Popup */}
-      {isAddEmployeeOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">Add Employee</h3>
-            <form onSubmit={handleAddEmployeeSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">First Name</label>
-                <input
-                  type="text"
-                  value={addEmployeeForm.firstName}
-                  onChange={(e) => setAddEmployeeForm({ ...addEmployeeForm, firstName: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Last Name</label>
-                <input
-                  type="text"
-                  value={addEmployeeForm.lastName}
-                  onChange={(e) => setAddEmployeeForm({ ...addEmployeeForm, lastName: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Position</label>
-                <input
-                  type="text"
-                  value={addEmployeeForm.position}
-                  onChange={(e) => setAddEmployeeForm({ ...addEmployeeForm, position: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Username</label>
-                <input
-                  type="text"
-                  value={addEmployeeForm.username}
-                  onChange={(e) => setAddEmployeeForm({ ...addEmployeeForm, username: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Phone Number</label>
-                <input
-                  type="text"
-                  value={addEmployeeForm.phone}
-                  onChange={(e) => setAddEmployeeForm({ ...addEmployeeForm, phone: e.target.value })}
-                  placeholder="123-456-7890"
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Color Assignment</label>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {pastelColors.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`w-8 h-8 rounded-full border-2 ${addEmployeeForm.color === color && !showAddCustomColorPicker ? 'border-bradley-blue' : 'border-transparent'}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => {
-                        setAddEmployeeForm({ ...addEmployeeForm, color });
-                        setShowAddCustomColorPicker(false);
-                      }}
-                    />
-                  ))}
-                  <button
-                    type="button"
-                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${showAddCustomColorPicker ? 'border-bradley-blue' : 'border-transparent'}`}
-                    style={{ backgroundColor: showAddCustomColorPicker ? addEmployeeForm.color : '#E5E7EB' }}
-                    onClick={() => setShowAddCustomColorPicker(true)}
-                  >
-                    <Plus size={16} className="text-bradley-dark-gray" />
-                  </button>
-                </div>
-                {showAddCustomColorPicker && (
-                  <div className="mt-2">
-                    <label className="block text-sm font-medium text-bradley-dark-gray">Custom Hex Value</label>
-                    <input
-                      type="text"
-                      value={addEmployeeForm.color}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        // Basic hex validation (starts with #, 7 characters)
-                        if (value.match(/^#[0-9A-Fa-f]{6}$/) || value === '') {
-                          setAddEmployeeForm({ ...addEmployeeForm, color: value });
-                        }
-                      }}
-                      placeholder="#FF0000"
-                      className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                  onClick={() => {
-                    setAddEmployeeForm({
-                      firstName: '',
-                      lastName: '',
-                      position: '',
-                      username: '',
-                      phone: '',
-                      color: '#A3BFFA',
-                    });
-                    setShowAddCustomColorPicker(false);
-                    setIsAddEmployeeOpen(false);
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-                >
-                  Add Employee
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Edit Employee Popup */}
-      {editEmployee && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">Edit Employee</h3>
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">First Name</label>
-                <input
-                  type="text"
-                  value={editEmployee.firstName}
-                  onChange={(e) => setEditEmployee({ ...editEmployee, firstName: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
+      {showEdit && editEmployee && user?.role === 'admin' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md relative">
+            <h2 className="text-xl font-bold mb-4">Edit Employee</h2>
+            {/* Delete button in top right */}
+            <button
+              className="absolute top-4 right-4 text-bradley-red hover:underline font-semibold flex items-center gap-1"
+              onClick={async () => {
+                setEditError('');
+                try {
+                  const functions = getFunctions();
+                  const deleteEmployee = httpsCallable(functions, 'deleteEmployee');
+                  await deleteEmployee({ uid: editEmployee.id });
+                  setEmployees(employees.filter(emp => emp.id !== editEmployee.id));
+                  setShowEdit(false);
+                  setEditEmployee(null);
+                  setEditColorChoice(pastelColors[0]);
+                  setEditCustomColor('');
+                  setShowEditCustomColor(false);
+                } catch (err: any) {
+                  // If error is 'no user record', fallback to deleting Firestore doc only
+                  const msg = err?.message || '';
+                  if (msg.includes('no user record') || msg.includes('no user record corresponding')) {
+                    try {
+                      await deleteDoc(doc(db, 'employees', editEmployee.id));
+                      setEmployees(employees.filter(emp => emp.id !== editEmployee.id));
+                      setShowEdit(false);
+                      setEditEmployee(null);
+                      setEditColorChoice(pastelColors[0]);
+                      setEditCustomColor('');
+                      setShowEditCustomColor(false);
+                      // Optionally show a warning to the user
+                      alert('Employee was removed from the database, but no corresponding Auth account was found.');
+                    } catch (firestoreErr: any) {
+                      setEditError(firestoreErr?.message || 'Failed to delete employee from database.');
+                    }
+                  } else {
+                    setEditError(msg || 'Failed to delete employee. Please try again.');
+                  }
+                }
+              }}
+              title="Delete Employee"
+            >
+              <Trash2 size={18} /> Delete
+            </button>
+            {/* Error feedback for delete or edit errors */}
+            {editError && (
+              <div className="mb-2 p-2 rounded bg-red-100 text-red-800 border border-red-300 text-center font-medium">
+                {editError}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Last Name</label>
+            )}
+            <form onSubmit={handleEditEmployee} className="space-y-4">
+              <div className="flex gap-2">
                 <input
                   type="text"
+                  placeholder="Last Name"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-1/2 bg-white"
                   value={editEmployee.lastName}
-                  onChange={(e) => setEditEmployee({ ...editEmployee, lastName: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                  onChange={e => setEditEmployee({ ...editEmployee, lastName: e.target.value })}
+                  required
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Position</label>
                 <input
                   type="text"
-                  value={editEmployee.position}
-                  onChange={(e) => setEditEmployee({ ...editEmployee, position: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                  placeholder="First Name"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-1/2 bg-white"
+                  value={editEmployee.firstName}
+                  onChange={e => setEditEmployee({ ...editEmployee, firstName: e.target.value })}
                   required
                 />
               </div>
+              <input
+                type="text"
+                placeholder="Username"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={editEmployee.username}
+                onChange={e => setEditEmployee({ ...editEmployee, username: e.target.value })}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Position"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={editEmployee.position}
+                onChange={e => setEditEmployee({ ...editEmployee, position: e.target.value })}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Email Address"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={editEmployee.email}
+                onChange={e => setEditEmployee({ ...editEmployee, email: e.target.value })}
+                required
+              />
+              <input
+                type="tel"
+                placeholder="Phone Number"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={editEmployee.phone}
+                onChange={e => setEditEmployee({ ...editEmployee, phone: e.target.value })}
+                required
+              />
               <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Username</label>
-                <input
-                  type="text"
-                  value={editEmployee.username}
-                  onChange={(e) => setEditEmployee({ ...editEmployee, username: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Phone</label>
-                <input
-                  type="text"
-                  value={editEmployee.phone}
-                  onChange={(e) => setEditEmployee({ ...editEmployee, phone: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Color Assignment</label>
-                <div className="mt-1 flex flex-wrap gap-2">
+                <label className="block mb-1 font-medium">Color Assignment</label>
+                <div className="flex gap-2 items-center">
                   {pastelColors.map((color) => (
                     <button
-                      key={color}
                       type="button"
-                      className={`w-8 h-8 rounded-full border-2 ${editEmployee.color === color && !showEditCustomColorPicker ? 'border-bradley-blue' : 'border-transparent'}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => {
-                        setEditEmployee({ ...editEmployee, color });
-                        setShowEditCustomColorPicker(false);
-                      }}
+                      key={color}
+                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${editColorChoice === color ? 'border-bradley-red' : 'border-bradley-dark-gray'}`}
+                      style={{ background: color }}
+                      onClick={() => handleEditColorSelect(color)}
                     />
                   ))}
                   <button
                     type="button"
-                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${showEditCustomColorPicker ? 'border-bradley-blue' : 'border-transparent'}`}
-                    style={{ backgroundColor: showEditCustomColorPicker ? editEmployee.color : '#E5E7EB' }}
-                    onClick={() => setShowEditCustomColorPicker(true)}
+                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${showEditCustomColor ? 'border-bradley-red' : 'border-bradley-dark-gray'}`}
+                    onClick={handleEditCustomColor}
                   >
-                    <Plus size={16} className="text-bradley-dark-gray" />
+                    <Plus size={16} />
                   </button>
-                </div>
-                {showEditCustomColorPicker && (
-                  <div className="mt-2">
-                    <label className="block text-sm font-medium text-bradley-dark-gray">Custom Hex Value</label>
+                  {showEditCustomColor && (
                     <input
                       type="text"
-                      value={editEmployee.color}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        if (value.match(/^#[0-9A-Fa-f]{6}$/) || value === '') {
-                          setEditEmployee({ ...editEmployee, color: value });
-                        }
-                      }}
-                      placeholder="#FF0000"
-                      className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                      placeholder="#HEX"
+                      className="ml-2 border border-bradley-dark-gray px-2 py-1 rounded w-24 bg-white"
+                      value={editCustomColor}
+                      onChange={e => setEditCustomColor(e.target.value)}
+                      required
                     />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                  onClick={() => {
-                    setEditEmployee(null);
-                    setShowEditCustomColorPicker(false);
-                  }}
+                  onClick={() => setShowEdit(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                  disabled={editLoading}
                 >
-                  Save
+                  {editLoading ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Change Password Popup */}
-      {changePasswordEmployee && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">
-              Change Password for {changePasswordEmployee.firstName}
-            </h3>
-            <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
-              <div className="relative">
-                <label className="block text-sm font-medium text-bradley-dark-gray">New Password</label>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-9 text-bradley-dark-gray"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
+      {/* Reset Password Popup */}
+      {showResetPassword && resetEmployee && user?.role === 'admin' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Reset Password</h2>
+            {resetError && (
+              <div className="mb-2 p-2 rounded bg-red-100 text-red-800 border border-red-300 text-center font-medium">
+                {resetError}
               </div>
-              <div className="flex justify-end space-x-2">
+            )}
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-bradley-dark-gray">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={resetPassword}
+                    onChange={e => setResetPassword(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                    required
+                  />
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-bradley-dark-gray"
+                    onClick={() => setShowPassword(v => !v)}
+                  >
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.956 9.956 0 012.223-3.592m3.1-2.727A9.956 9.956 0 0112 5c4.478 0 8.268 2.943 9.542 7a9.973 9.973 0 01-4.293 5.411M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 6L6 6" /></svg>
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-bradley-dark-gray">Verify New Password</label>
+                <div className="relative">
+                  <input
+                    type={showVerifyPassword ? 'text' : 'password'}
+                    value={verifyPassword}
+                    onChange={e => setVerifyPassword(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                    required
+                  />
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-bradley-dark-gray"
+                    onClick={() => setShowVerifyPassword(v => !v)}
+                  >
+                    {showVerifyPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.956 9.956 0 012.223-3.592m3.1-2.727A9.956 9.956 0 0112 5c4.478 0 8.268 2.943 9.542 7a9.973 9.973 0 01-4.293 5.411M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 6L6 6" /></svg>
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                  onClick={() => {
-                    setChangePasswordEmployee(null);
-                    setNewPassword('');
-                    setShowPassword(false);
-                  }}
+                  onClick={() => setShowResetPassword(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                  disabled={!resetPassword || resetPassword !== verifyPassword}
                 >
-                  Change
+                  Reset
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Affirmation Popup */}
+      {showAffirm && user?.role === 'admin' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-xs text-center">
+            <h2 className="text-xl font-bold mb-4">Are you sure?</h2>
+            <div className="flex justify-center gap-4 mt-4">
+              <button
+                className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+                onClick={handleAffirmYes}
+              >
+                Yes
+              </button>
+              <button
+                className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
+                onClick={handleAffirmNo}
+              >
+                No
+              </button>
+            </div>
           </div>
         </div>
       )}

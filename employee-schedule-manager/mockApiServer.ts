@@ -96,7 +96,6 @@ interface Employee {
   phone: string;
   color: string;
   role: 'admin' | 'employee';
-  addedByAdmin?: boolean;
 }
 
 interface Announcement {
@@ -169,7 +168,6 @@ let employees: Employee[] = [
     phone: '123-456-7890',
     color: '#007bff',
     role: 'employee',
-    addedByAdmin: true,
   },
   {
     id: 'u2',
@@ -180,7 +178,6 @@ let employees: Employee[] = [
     phone: '098-765-4321',
     color: '#ff4d4d',
     role: 'admin',
-    addedByAdmin: false,
   },
 ];
 
@@ -295,15 +292,8 @@ app.post('/api/shiftCoverageRequests', async (req: Request, res: Response) => {
 app.get('/api/employees', (req: Request, res: Response) => {
   try {
     console.log('Handling GET /api/employees, current employees:', employees);
-    employees.forEach(emp => {
-      console.log(`Employee ${emp.id}: role=${emp.role}, addedByAdmin=${emp.addedByAdmin}`);
-    });
-    const filteredEmployees = employees.filter(emp => {
-      const shouldInclude = emp.role !== 'admin' && emp.addedByAdmin === true;
-      console.log(`Filtering employee ${emp.id}: shouldInclude=${shouldInclude}`);
-      return shouldInclude;
-    });
-    console.log('Filtered employees:', filteredEmployees);
+    // Only filter by role, not addedByAdmin
+    const filteredEmployees = employees.filter(emp => emp.role !== 'admin');
     res.json({
       version: '2025-05-18-v1',
       timestamp: new Date().toISOString(),
@@ -318,7 +308,7 @@ app.get('/api/employees', (req: Request, res: Response) => {
 app.post('/api/employees', async (req: Request, res: Response) => {
   try {
     console.log('Handling POST /api/employees, request body:', req.body);
-    const employee: Employee = { ...req.body, addedByAdmin: true };
+    const employee: Employee = { ...req.body };
     employees = [...employees, employee];
     res.status(201).json(employee);
   } catch (err: unknown) {
@@ -331,7 +321,7 @@ app.put('/api/employees/:id', async (req: Request, res: Response) => {
   try {
     console.log('Handling PUT /api/employees/:id, request body:', req.body);
     const { id } = req.params;
-    const updatedEmployee: Employee = { ...req.body, addedByAdmin: true };
+    const updatedEmployee: Employee = { ...req.body };
     const index = employees.findIndex((emp) => emp.id === id);
     if (index !== -1) {
       employees = [

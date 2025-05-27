@@ -1,690 +1,529 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, parse, getDay, isBefore, isAfter } from 'date-fns';
+import { Plus, Pencil, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay } from 'date-fns';
-import { Plus, Trash } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import { ShiftCoverageRequest } from '../types/shiftCoverageTypes';
 
+const viewOptions = [
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Daily', value: 'daily' },
+  { label: 'By Employee', value: 'byEmployee' },
+];
+
+// Type for a shift
 interface Shift {
   id: string;
   employeeId: string;
   employeeName: string;
+  color: string;
   date: string;
   startTime: string;
   endTime: string;
-  color: string;
+  repeatDays?: number[];
+  repeatWeekly?: boolean;
+  repeatEndDate?: string;
 }
 
-interface Employee {
-  id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  username: string;
-  phone: string;
-  color: string;
-  role: 'admin' | 'employee';
-  addedByAdmin?: boolean;
-}
-
-interface RequestType {
-  id: string;
-  employee: string;
-  type: 'Time Off' | 'Shift Coverage';
-  date: string;
-  time?: string;
-  startTime?: string;
-  endTime?: string;
-  status: 'Pending' | 'Approved' | 'Denied';
-}
-
-interface ShiftCoverageRequest {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status: 'Pending' | 'Covered';
-}
-
-export default function Schedule() {
+export default function Schedule({ employees, setEmployees }: { employees: any[], setEmployees: (emps: any[]) => void }) {
   const { user } = useAuthStore();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [currentDate, setCurrentDate] = useState(() => {
-    const query = new URLSearchParams(location.search);
-    const dateParam = query.get('date');
-    return dateParam ? parse(dateParam, 'yyyy-MM-dd', new Date()) : new Date();
-  });
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [requests, setRequests] = useState<RequestType[]>([]);
-  const [shiftCoverageRequests, setShiftCoverageRequests] = useState<ShiftCoverageRequest[]>([]);
-  const [error, setError] = useState<string>('');
-  const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
-  const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
-  const [editShiftForm, setEditShiftForm] = useState({
-    employeeId: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-  });
-  const [addShiftForm, setAddShiftForm] = useState({
-    employeeId: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    startTime: '09:00 AM',
-    endTime: '05:00 PM',
-  });
+  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 4, 1));
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [view, setView] = useState('monthly');
+  const [shifts, setShifts] = useState<Shift[]>(() => generateRecurringShifts());
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [showAddShift, setShowAddShift] = useState(false);
+  const [shiftSuccess, setShiftSuccess] = useState<string>('');
+  const [coverageRequests, setCoverageRequests] = useState<ShiftCoverageRequest[]>([]);
+  const [coverageNotification, setCoverageNotification] = useState('');
+  const [coverageError, setCoverageError] = useState('');
 
+  // Fetch coverage requests for this user
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const shiftsResponse = await fetch('http://localhost:3001/api/shifts');
-        if (!shiftsResponse.ok) throw new Error('Failed to fetch shifts');
-        const shiftsData = await shiftsResponse.json();
-        setShifts(shiftsData);
-
-        const employeesResponse = await fetch('http://localhost:3001/api/employees');
-        if (!employeesResponse.ok) throw new Error('Failed to fetch employees');
-        const employeesData = await employeesResponse.json();
-        setEmployees(employeesData);
-
-        const requestsResponse = await fetch('http://localhost:3001/api/requests');
-        if (!requestsResponse.ok) throw new Error('Failed to fetch requests');
-        const requestsData = await requestsResponse.json();
-        setRequests(requestsData);
-
-        const coverageResponse = await fetch('http://localhost:3001/api/shiftCoverageRequests');
-        if (!coverageResponse.ok) throw new Error('Failed to fetch shift coverage requests');
-        const coverageData = await coverageResponse.json();
-        setShiftCoverageRequests(coverageData);
-      } catch (err: unknown) {
-        console.error('Schedule: Failed to fetch data:', err);
-        setError('Failed to load schedule data. Please try again.');
-      }
+    if (!user) return;
+    const fetchCoverageRequests = async () => {
+      const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
+      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequest[]);
     };
-    fetchData();
-  }, []);
+    fetchCoverageRequests();
+  }, [user]);
 
-  // Utility function to convert time to minutes since midnight
-  const timeToMinutes = (time: string): number => {
-    const [timePart, period] = time.split(' ');
-    let [hours, minutes] = timePart.split(':').map(Number);
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
-    return hours * 60 + minutes;
-  };
-
-  const startDate = startOfMonth(currentDate);
-  const endDate = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
-
-  // Calculate the day of the week for the first day of the month
-  const firstDayOfMonth = getDay(startDate);
-  const emptyDays = Array.from({ length: firstDayOfMonth }, (_, i) => (
-    <div key={`empty-${i}`} className="border border-bradley-medium-gray p-2 min-h-[100px]"></div>
-  ));
-
-  const handlePreviousMonth = () => {
-    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-    navigate('/schedule');
-  };
-
-  const handleNextMonth = () => {
-    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-    navigate('/schedule');
-  };
-
-  const handleAddShiftSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const selectedEmployee = employees.find(emp => emp.id === addShiftForm.employeeId);
-      if (!selectedEmployee) throw new Error('Employee not found');
-
-      const shiftDate = parse(addShiftForm.date, 'yyyy-MM-dd', new Date());
-      const newStartMinutes = timeToMinutes(addShiftForm.startTime);
-      const newEndMinutes = timeToMinutes(addShiftForm.endTime);
-
-      // Check for existing shifts on the same date for the employee
-      const existingShift = shifts.find(
-        (shift) =>
-          shift.employeeId === addShiftForm.employeeId &&
-          isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), shiftDate)
-      );
-      if (existingShift) {
-        const existingStartMinutes = timeToMinutes(existingShift.startTime);
-        const existingEndMinutes = timeToMinutes(existingShift.endTime);
-        if (
-          (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
-          (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
-          (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
-        ) {
-          throw new Error(`${selectedEmployee.firstName} ${selectedEmployee.lastName} is already scheduled on ${addShiftForm.date} from ${existingShift.startTime} to ${existingShift.endTime}.`);
-        }
+  // Helper to get all days in the current month view
+  const getMonthMatrix = () => {
+    const matrix = [];
+    const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 });
+    let day = start;
+    while (day <= end) {
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        week.push(day);
+        day = addDays(day, 1);
       }
-
-      // Check for approved time off requests on the same date for the employee
-      const approvedTimeOff = requests.find(
-        (req) =>
-          req.employee === `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim() &&
-          req.type === 'Time Off' &&
-          req.status === 'Approved' &&
-          isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), shiftDate)
-      );
-
-      const newShifts: Shift[] = [];
-      if (approvedTimeOff) {
-        if (approvedTimeOff.time === 'All Day') {
-          throw new Error(`${selectedEmployee.firstName} ${selectedEmployee.lastName} has approved time off on ${addShiftForm.date}.`);
-        } else if (approvedTimeOff.time === 'Partial Day' && approvedTimeOff.startTime && approvedTimeOff.endTime) {
-          const timeOffStartMinutes = timeToMinutes(approvedTimeOff.startTime);
-          const timeOffEndMinutes = timeToMinutes(approvedTimeOff.endTime);
-
-          const hasOverlap =
-            (newStartMinutes >= timeOffStartMinutes && newStartMinutes < timeOffEndMinutes) ||
-            (newEndMinutes > timeOffStartMinutes && newEndMinutes <= timeOffEndMinutes) ||
-            (newStartMinutes <= timeOffStartMinutes && newEndMinutes >= timeOffEndMinutes);
-
-          if (hasOverlap) {
-            // Split the shift around the time off period
-            if (newStartMinutes < timeOffStartMinutes) {
-              // Add a shift before the time off
-              const beforeShift: Shift = {
-                id: `s${Date.now()}`,
-                employeeId: addShiftForm.employeeId,
-                employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-                date: addShiftForm.date,
-                startTime: addShiftForm.startTime,
-                endTime: approvedTimeOff.startTime,
-                color: selectedEmployee.color,
-              };
-              newShifts.push(beforeShift);
-            }
-            if (newEndMinutes > timeOffEndMinutes) {
-              // Add a shift after the time off
-              const afterShift: Shift = {
-                id: `s${Date.now() + 1}`,
-                employeeId: addShiftForm.employeeId,
-                employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-                date: addShiftForm.date,
-                startTime: approvedTimeOff.endTime,
-                endTime: addShiftForm.endTime,
-                color: selectedEmployee.color,
-              };
-              newShifts.push(afterShift);
-            }
-          } else {
-            // No overlap, add the shift as is
-            const newShift: Shift = {
-              id: `s${Date.now()}`,
-              employeeId: addShiftForm.employeeId,
-              employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-              date: addShiftForm.date,
-              startTime: addShiftForm.startTime,
-              endTime: addShiftForm.endTime,
-              color: selectedEmployee.color,
-            };
-            newShifts.push(newShift);
-          }
-        }
-      } else {
-        // No time off, add the shift as is
-        const newShift: Shift = {
-          id: `s${Date.now()}`,
-          employeeId: addShiftForm.employeeId,
-          employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-          date: addShiftForm.date,
-          startTime: addShiftForm.startTime,
-          endTime: addShiftForm.endTime,
-          color: selectedEmployee.color,
-        };
-        newShifts.push(newShift);
-      }
-
-      // Save all new shifts
-      for (const shift of newShifts) {
-        const response = await fetch('http://localhost:3001/api/shifts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(shift),
-        });
-        if (!response.ok) throw new Error('Failed to add shift');
-      }
-
-      setShifts((prev) => [...prev, ...newShifts]);
-      setAddShiftForm({
-        employeeId: '',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        startTime: '09:00 AM',
-        endTime: '05:00 PM',
-      });
-      setIsAddShiftOpen(false);
-    } catch (err: unknown) {
-      console.error('Schedule: Failed to add shift:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add shift. Please try again.');
+      matrix.push(week);
     }
+    return matrix;
   };
 
-  const handleEditShiftSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedShift) return;
-    try {
-      const selectedEmployee = employees.find(emp => emp.id === editShiftForm.employeeId);
-      if (!selectedEmployee) throw new Error('Employee not found');
+  // Monthly View
+  const renderMonthly = () => (
+    <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley overflow-x-auto">
+      <table className="min-w-full border border-bradley-medium-gray rounded-lg overflow-hidden table-fixed">
+        <colgroup>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <col key={i} style={{ width: '120px' }} />
+          ))}
+        </colgroup>
+        <thead className="border-b border-bradley-medium-gray">
+          <tr className="bg-bradley-light-gray">
+            {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d) => (
+              <th key={d} className="px-2 py-2 text-center text-bradley-dark-gray border-r last:border-r-0 border-bradley-medium-gray font-medium" style={{ width: '120px' }}>{d}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {getMonthMatrix().map((week, i) => (
+            <tr key={i} className="border-b last:border-b-0 border-bradley-medium-gray">
+              {week.map((day, j) => {
+                const dayShifts = shifts.filter(s => s.date === format(day, 'MM-dd-yyyy'));
+                const isToday = isSameDay(day, new Date());
+                return (
+                  <td key={j} className={`h-24 align-top px-2 py-1 border-t border-bradley-medium-gray border-r last:border-r-0 ${isSameMonth(day, currentMonth) ? 'bg-white' : 'bg-bradley-light-gray/30'}`} style={{ width: '120px', minWidth: '120px', maxWidth: '120px' }}>
+                    <div className="text-xs font-semibold mb-1 text-right pr-1">
+                      {isToday ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-bradley-red text-white">{format(day, 'd')}</span>
+                      ) : (
+                        <span className="text-bradley-dark-gray">{format(day, 'd')}</span>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      {dayShifts.map(shift => (
+                        <div
+                          key={shift.id}
+                          className={`rounded text-xs flex items-center gap-1 ${user?.role === 'admin' ? 'cursor-pointer hover:opacity-80' : ''}`}
+                          style={{
+                            background: (employees.find(e => e.id === shift.employeeId)?.color || shift.color),
+                            color: '#fff',
+                            padding: '2px 6px'
+                          }}
+                          onClick={user?.role === 'admin' ? () => { setEditingShift(shift); setShowShiftModal(true); } : undefined}
+                        >
+                          <span className="font-semibold leading-tight">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
+                          <span className="leading-tight text-[11px]">{shortTime(shift.startTime)}-{shortTime(shift.endTime)}</span>
+                          {coverageRequests.some(req => req.shiftId === shift.id && req.status === 'Open') && <AlertTriangle className="inline ml-1 text-yellow-400" size={16} />}
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
-      const shiftDate = parse(editShiftForm.date, 'yyyy-MM-dd', new Date());
-      const newStartMinutes = timeToMinutes(editShiftForm.startTime);
-      const newEndMinutes = timeToMinutes(editShiftForm.endTime);
-
-      // Check for overlapping shifts on the same date for the employee, excluding the current shift
-      const existingShift = shifts.find(
-        (shift) =>
-          shift.id !== selectedShift.id &&
-          shift.employeeId === editShiftForm.employeeId &&
-          isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), shiftDate)
-      );
-      if (existingShift) {
-        const existingStartMinutes = timeToMinutes(existingShift.startTime);
-        const existingEndMinutes = timeToMinutes(existingShift.endTime);
-        if (
-          (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
-          (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
-          (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
-        ) {
-          throw new Error(`${selectedEmployee.firstName} ${selectedEmployee.lastName} is already scheduled on ${editShiftForm.date} from ${existingShift.startTime} to ${existingShift.endTime}.`);
-        }
-      }
-
-      // Check for approved time off requests on the same date for the employee
-      const approvedTimeOff = requests.find(
-        (req) =>
-          req.employee === `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim() &&
-          req.type === 'Time Off' &&
-          req.status === 'Approved' &&
-          isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), shiftDate)
-      );
-
-      const newShifts: Shift[] = [];
-      if (approvedTimeOff) {
-        if (approvedTimeOff.time === 'All Day') {
-          throw new Error(`${selectedEmployee.firstName} ${selectedEmployee.lastName} has approved time off on ${editShiftForm.date}.`);
-        } else if (approvedTimeOff.time === 'Partial Day' && approvedTimeOff.startTime && approvedTimeOff.endTime) {
-          const timeOffStartMinutes = timeToMinutes(approvedTimeOff.startTime);
-          const timeOffEndMinutes = timeToMinutes(approvedTimeOff.endTime);
-
-          const hasOverlap =
-            (newStartMinutes >= timeOffStartMinutes && newStartMinutes < timeOffEndMinutes) ||
-            (newEndMinutes > timeOffStartMinutes && newEndMinutes <= timeOffEndMinutes) ||
-            (newStartMinutes <= timeOffStartMinutes && newEndMinutes >= timeOffEndMinutes);
-
-          if (hasOverlap) {
-            if (newStartMinutes < timeOffStartMinutes) {
-              const beforeShift: Shift = {
-                id: `s${Date.now()}`,
-                employeeId: editShiftForm.employeeId,
-                employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-                date: editShiftForm.date,
-                startTime: editShiftForm.startTime,
-                endTime: approvedTimeOff.startTime,
-                color: selectedEmployee.color,
-              };
-              newShifts.push(beforeShift);
-            }
-            if (newEndMinutes > timeOffEndMinutes) {
-              const afterShift: Shift = {
-                id: `s${Date.now() + 1}`,
-                employeeId: editShiftForm.employeeId,
-                employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-                date: editShiftForm.date,
-                startTime: approvedTimeOff.endTime,
-                endTime: editShiftForm.endTime,
-                color: selectedEmployee.color,
-              };
-              newShifts.push(afterShift);
-            }
-          } else {
-            const updatedShift: Shift = {
-              ...selectedShift,
-              employeeId: editShiftForm.employeeId,
-              employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-              date: editShiftForm.date,
-              startTime: editShiftForm.startTime,
-              endTime: editShiftForm.endTime,
-              color: selectedEmployee.color,
-            };
-            newShifts.push(updatedShift);
-          }
-        }
-      } else {
-        const updatedShift: Shift = {
-          ...selectedShift,
-          employeeId: editShiftForm.employeeId,
-          employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`.trim(),
-          date: editShiftForm.date,
-          startTime: editShiftForm.startTime,
-          endTime: editShiftForm.endTime,
-          color: selectedEmployee.color,
-        };
-        newShifts.push(updatedShift);
-      }
-
-      // Remove the original shift
-      const updatedShifts = shifts.filter(shift => shift.id !== selectedShift.id);
-
-      // Save all new shifts
-      for (const shift of newShifts) {
-        updatedShifts.push(shift);
-      }
-
-      const response = await fetch('http://localhost:3001/api/shifts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedShifts),
-      });
-      if (!response.ok) throw new Error('Failed to update shift');
-
-      setShifts(updatedShifts);
-      setIsEditShiftOpen(false);
-      setSelectedShift(null);
-    } catch (err: unknown) {
-      console.error('Schedule: Failed to update shift:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update shift. Please try again.');
-    }
-  };
-
-  const handleDeleteShift = async () => {
-    if (!selectedShift) return;
-    try {
-      const updatedShifts = shifts.filter(shift => shift.id !== selectedShift.id);
-      const response = await fetch('http://localhost:3001/api/shifts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedShifts),
-      });
-      if (!response.ok) throw new Error('Failed to delete shift');
-
-      setShifts(updatedShifts);
-      setIsEditShiftOpen(false);
-      setIsDeleteConfirmOpen(false);
-      setSelectedShift(null);
-    } catch (err: unknown) {
-      console.error('Schedule: Failed to delete shift:', err);
-      setError('Failed to delete shift. Please try again.');
-    }
-  };
-
-  if (!user) {
-    return <div className="p-6 text-center text-bradley-dark-gray">Access Denied</div>;
+  // Helper to convert 08:00 AM to 8am, 12:00 PM to 12pm, etc.
+  function shortTime(time: string): string {
+    const [h, m, period] = time.split(/:| /);
+    let hour = parseInt(h, 10);
+    let ampm = period ? period.toLowerCase() : '';
+    if (hour === 0) hour = 12;
+    if (hour > 12) hour -= 12;
+    return `${hour}${ampm}`;
   }
 
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-bradley-dark-gray">Schedule</h1>
-        {user.role === 'admin' && (
-          <button
-            className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-            onClick={() => setIsAddShiftOpen(true)}
-          >
-            Add Shift
-          </button>
+  // Daily View
+  const renderDaily = () => {
+    const dayShifts = shifts.filter(s => s.date === format(selectedDate, 'MM-dd-yyyy'));
+    return (
+      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley mt-4">
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Shifts for {format(selectedDate, 'MM-dd-yyyy')}</h2>
+        {dayShifts.length === 0 ? (
+          <p className="text-lg text-bradley-medium-gray">No shifts scheduled.</p>
+        ) : (
+          <ul className="space-y-2">
+            {dayShifts.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(shift => (
+              <li key={shift.id} className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 rounded-full" style={{ background: shift.color }}></span>
+                <span className="font-medium text-bradley-dark-gray">{shift.startTime} - {shift.endTime}</span>
+                <span className="text-bradley-dark-gray">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
+                {user?.role === 'admin' && (
+                  <button onClick={() => { setEditingShift(shift); setShowShiftModal(true); }} className="ml-2 text-bradley-dark-gray"><Pencil size={16} /></button>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-      {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
-      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <button
-            onClick={handlePreviousMonth}
-            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-          >
-            Previous
-          </button>
-          <h2 className="text-xl font-semibold text-bradley-dark-gray">
-            {format(currentDate, 'MMMM yyyy')}
-          </h2>
-          <button
-            onClick={handleNextMonth}
-            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-          >
-            Next
-          </button>
-        </div>
-        <div className="grid grid-cols-7 gap-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="text-center font-semibold text-bradley-dark-gray">
-              {day}
-            </div>
-          ))}
-          {emptyDays}
-          {daysInMonth.map((day) => {
-            const isToday = isSameDay(day, new Date());
-            const dayShifts = shifts.filter((shift) => isSameDay(parse(shift.date, 'yyyy-MM-dd', new Date()), day));
-            const dayRequests = requests.filter((req) => req.type === 'Time Off' && isSameDay(parse(req.date, 'yyyy-MM-dd', new Date()), day));
-            return (
+    );
+  };
+
+  // By Employee View
+  const renderByEmployee = () => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    const employeeRows = employees.map(emp => {
+      const row = weekDays.map((date, idx) => {
+        const empShifts = shifts.filter(s =>
+          s.employeeId === emp.id &&
+          isSameDay(new Date(s.date), date)
+        );
+        return (
+          <td key={days[idx]} className="px-2 py-1 border-t border-r last:border-r-0 border-bradley-medium-gray">
+            {empShifts.map(shift => (
               <div
-                key={day.toString()}
-                className={`border border-bradley-medium-gray p-2 min-h-[100px] relative ${isToday ? 'bg-bradley-blue bg-opacity-20' : ''}`}
+                key={shift.id}
+                className={`mb-1 px-2 py-1 rounded text-xs flex items-center justify-between ${user?.role === 'admin' ? 'cursor-pointer hover:opacity-80' : ''}`}
+                style={{
+                  background: (employees.find(e => e.id === shift.employeeId)?.color || shift.color),
+                  color: '#fff'
+                }}
+                onClick={user?.role === 'admin' ? () => { setEditingShift(shift); setShowShiftModal(true); } : undefined}
               >
-                <div className="text-bradley-dark-gray">{format(day, 'd')}</div>
-                {dayShifts.map((shift) => (
-                  <div
-                    key={shift.id}
-                    className={`mt-1 p-1 rounded text-sm text-white ${user.role === 'admin' ? 'cursor-pointer hover:opacity-80' : ''}`}
-                    style={{ backgroundColor: shift.color }}
-                    onClick={() => {
-                      if (user.role === 'admin') {
-                        setSelectedShift(shift);
-                        setEditShiftForm({
-                          employeeId: shift.employeeId,
-                          date: shift.date,
-                          startTime: shift.startTime,
-                          endTime: shift.endTime,
-                        });
-                        setIsEditShiftOpen(true);
-                      }
-                    }}
-                  >
-                    {shift.employeeName}: {shift.startTime} - {shift.endTime}
-                  </div>
-                ))}
-                {dayRequests.map((req) => (
-                  <div
-                    key={req.id}
-                    className="mt-1 p-1 rounded text-sm text-bradley-dark-gray bg-yellow-200"
-                  >
-                    {req.employee} - {req.status === 'Approved' ? 'Off' : `Time Off (${req.time || 'All Day'}) - ${req.status}`}
-                  </div>
-                ))}
+                <span>{shift.startTime} - {shift.endTime}</span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </td>
+        );
+      });
+      return (
+        <tr key={emp.id}>
+          <td className="px-2 py-1 border-t border-r border-bradley-medium-gray font-semibold text-bradley-dark-gray">{getEmployeeName(emp)}</td>
+          {row}
+        </tr>
+      );
+    });
+    return (
+      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley overflow-x-auto">
+        <table className="min-w-full border border-bradley-medium-gray rounded-lg overflow-hidden table-fixed">
+          <colgroup>
+            <col style={{ width: '160px' }} />
+            {Array.from({ length: 7 }).map((_, i) => (
+              <col key={i} style={{ width: '120px' }} />
+            ))}
+          </colgroup>
+          <thead className="border-b border-bradley-medium-gray">
+            <tr className="bg-bradley-light-gray">
+              <th className="px-2 py-2 text-left text-bradley-dark-gray border-r border-bradley-medium-gray font-medium" style={{ width: '160px' }}>Employee</th>
+              {weekDays.map((date, idx) => (
+                <th key={idx} className="px-2 py-2 text-center text-bradley-dark-gray border-r last:border-r-0 border-bradley-medium-gray font-medium" style={{ width: '120px' }}>
+                  {format(date, 'EEE, MMM d')}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {employeeRows}
+          </tbody>
+        </table>
       </div>
+    );
+  };
 
-      {isAddShiftOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">Add Shift</h3>
-            <form onSubmit={handleAddShiftSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Employee</label>
-                <select
-                  value={addShiftForm.employeeId}
-                  onChange={(e) => setAddShiftForm({ ...addShiftForm, employeeId: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                >
-                  <option value="">Select Employee</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Date</label>
-                <input
-                  type="date"
-                  value={addShiftForm.date}
-                  min={format(new Date(), 'yyyy-MM-dd')} // Prevent past dates
-                  onChange={(e) => setAddShiftForm({ ...addShiftForm, date: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Start Time</label>
-                <input
-                  type="time"
-                  value={addShiftForm.startTime}
-                  onChange={(e) => setAddShiftForm({ ...addShiftForm, startTime: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">End Time</label>
-                <input
-                  type="time"
-                  value={addShiftForm.endTime}
-                  onChange={(e) => setAddShiftForm({ ...addShiftForm, endTime: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                  onClick={() => setIsAddShiftOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-                >
-                  Add Shift
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+  // Shift Modal (Add/Edit)
+  const ShiftModal = ({ shift, onClose, onSave, isEdit }: {
+    shift: Shift | null;
+    onClose: () => void;
+    onSave: (shift: Shift) => void;
+    isEdit: boolean;
+  }) => {
+    const [date, setDate] = useState<string>(shift?.date || format(selectedDate, 'MM-dd-yyyy'));
+    const [startTime, setStartTime] = useState<string>(shift?.startTime || '08:00 AM');
+    const [endTime, setEndTime] = useState<string>(shift?.endTime || '12:00 PM');
+    const [repeatDays, setRepeatDays] = useState<number[]>(shift?.repeatDays || []);
+    const [repeatWeekly, setRepeatWeekly] = useState<boolean>(shift?.repeatWeekly || false);
+    const [repeatEndDate, setRepeatEndDate] = useState<string>(shift?.repeatEndDate || '');
+    const [assignedEmployee, setAssignedEmployee] = useState<string>(shift?.employeeId || employees[0].id);
 
-      {isEditShiftOpen && selectedShift && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">Edit Shift</h3>
-            <form onSubmit={handleEditShiftSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Employee</label>
-                <select
-                  value={editShiftForm.employeeId}
-                  onChange={(e) => setEditShiftForm({ ...editShiftForm, employeeId: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                >
-                  <option value="">Select Employee</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Date</label>
-                <input
-                  type="date"
-                  value={editShiftForm.date}
-                  min={format(new Date(), 'yyyy-MM-dd')} // Prevent past dates
-                  onChange={(e) => setEditShiftForm({ ...editShiftForm, date: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">Start Time</label>
-                <input
-                  type="time"
-                  value={editShiftForm.startTime}
-                  onChange={(e) => setEditShiftForm({ ...editShiftForm, startTime: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-bradley-dark-gray">End Time</label>
-                <input
-                  type="time"
-                  value={editShiftForm.endTime}
-                  onChange={(e) => setEditShiftForm({ ...editShiftForm, endTime: e.target.value })}
-                  className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-                  required
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <button
-                  type="button"
-                  onClick={() => setIsDeleteConfirmOpen(true)}
-                  className="flex items-center px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-                >
-                  <Trash size={16} className="mr-2" /> Delete Shift
-                </button>
-                <div className="flex space-x-2">
-                  <button
-                    type="button"
-                    className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                    onClick={() => {
-                      setIsEditShiftOpen(false);
-                      setSelectedShift(null);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-      {isDeleteConfirmOpen && selectedShift && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4 text-bradley-dark-gray">Confirm Delete</h3>
-            <p className="text-bradley-dark-gray mb-6">
-              Are you sure you want to delete this shift for {selectedShift.employeeName} on {selectedShift.date} from {selectedShift.startTime} to {selectedShift.endTime}?
-            </p>
-            <div className="flex justify-end space-x-2">
+    const handleDayToggle = (idx: number) => {
+      setRepeatDays((prev: number[]) => prev.includes(idx) ? prev.filter((d: number) => d !== idx) : [...prev, idx]);
+    };
+
+    const handleSave = (e: React.FormEvent) => {
+      e.preventDefault();
+      const newShift: Shift = {
+        id: shift?.id || '',
+        date,
+        startTime,
+        endTime,
+        employeeId: assignedEmployee,
+        employeeName: getEmployeeName(employees.find(e => e.id === assignedEmployee)),
+        color: employees.find(e => e.id === assignedEmployee)?.color || '#FFD6E0',
+        repeatDays,
+        repeatWeekly,
+        repeatEndDate,
+      };
+      onSave(newShift);
+    };
+
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+        <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
+          <h2 className="text-xl font-bold mb-4">{isEdit ? 'Edit Shift' : 'Add Shift'}</h2>
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className="block mb-1 font-medium">Date</label>
+              <input
+                type="text"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                placeholder="MM-DD-YYYY"
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-1/2">
+                <label className="block mb-1 font-medium">Start Time</label>
+                <input
+                  type="text"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  placeholder="08:00 AM"
+                  required
+                />
+              </div>
+              <div className="w-1/2">
+                <label className="block mb-1 font-medium">End Time</label>
+                <input
+                  type="text"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  placeholder="12:00 PM"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Repeats on</label>
+              <div className="flex gap-2 flex-wrap">
+                {daysOfWeek.map((d, idx) => (
+                  <label key={d} className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={repeatDays.includes(idx)}
+                      onChange={() => handleDayToggle(idx)}
+                    />
+                    <span>{d}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={repeatWeekly}
+                  onChange={e => setRepeatWeekly(e.target.checked)}
+                />
+                Shift Repeats Every Week?
+              </label>
+            </div>
+            {repeatWeekly && (
+              <div>
+                <label className="block mb-1 font-medium">End Date</label>
+                <input
+                  type="text"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                  value={repeatEndDate}
+                  onChange={e => setRepeatEndDate(e.target.value)}
+                  placeholder="MM-DD-YYYY"
+                  required
+                />
+              </div>
+            )}
+            <div>
+              <label className="block mb-1 font-medium">Assign to Employee</label>
+              <select
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                value={assignedEmployee}
+                onChange={e => setAssignedEmployee(e.target.value)}
+              >
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-[0_4px_0_0_#939598] active:shadow-[0_1px_1px_0_#939598]"
-                onClick={() => setIsDeleteConfirmOpen(false)}
+                onClick={onClose}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleDeleteShift}
+                type="submit"
                 className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
               >
-                Delete
+                Save
               </button>
             </div>
-          </div>
+          </form>
         </div>
+      </div>
+    );
+  };
+
+  // Add/Edit shift logic
+  const handleSaveShift = (shift: Shift) => {
+    if (shift.id) {
+      // Edit existing
+      setShifts(shifts.map(s => s.id === shift.id ? { ...s, ...shift } : s));
+      setShiftSuccess('Shift updated successfully!');
+    } else {
+      // Add new
+      const newId = `shift-${Date.now()}`;
+      setShifts([...shifts, { ...shift, id: newId }]);
+      setShiftSuccess('Shift added successfully!');
+    }
+    setShowShiftModal(false);
+    setShowAddShift(false);
+    setEditingShift(null);
+    setTimeout(() => setShiftSuccess(''), 3000);
+  };
+
+  // Claim a coverage request
+  const handleClaim = useCallback(async (req: ShiftCoverageRequest) => {
+    try {
+      const functions = getFunctions();
+      const claim = httpsCallable(functions, 'claimShiftCoverageRequest');
+      await claim({ requestId: req.id });
+      setCoverageNotification('You have claimed this shift.');
+    } catch (err: any) {
+      setCoverageError(err.message || 'Failed to claim shift.');
+    }
+  }, []);
+
+  // Return a claimed shift
+  const handleReturn = useCallback(async (req: ShiftCoverageRequest) => {
+    try {
+      const functions = getFunctions();
+      const ret = httpsCallable(functions, 'returnShiftCoverageRequest');
+      await ret({ requestId: req.id });
+      setCoverageNotification('You have returned this shift to open coverage.');
+    } catch (err: any) {
+      setCoverageError(err.message || 'Failed to return shift.');
+    }
+  }, []);
+
+  // Navigation
+  const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+
+  return (
+    <div className="p-6 md:pl-48">
+      {shiftSuccess && (
+        <div className="mb-4 p-3 rounded bg-green-100 text-green-800 border border-green-300 text-center font-medium">
+          {shiftSuccess}
+        </div>
+      )}
+      {coverageNotification && <div className="mb-2 p-2 bg-green-100 text-green-800 rounded">{coverageNotification}</div>}
+      {coverageError && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{coverageError}</div>}
+      <div className="flex items-center justify-between mb-6">
+        {/* View options on left */}
+        <div className="flex gap-2 items-center flex-1">
+          {viewOptions.map(opt => (
+            <button
+              key={opt.value}
+              className={`px-3 py-2 rounded-md font-medium border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray transition-colors duration-100 ${view === opt.value ? 'border-bradley-red ring-2 ring-bradley-red text-bradley-red bg-white' : ''}`}
+              onClick={() => setView(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {/* Month name and navigation in center */}
+        <div className="flex items-center gap-2 flex-1 justify-center">
+          <button
+            className="px-4 py-2 border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-none hover:bg-white transition-colors duration-100"
+            onClick={handlePrevMonth}
+          >
+            Previous
+          </button>
+          <span className="text-2xl font-bold text-bradley-dark-gray mx-2 min-w-[180px] text-center">{format(currentMonth, 'MMMM yyyy')}</span>
+          <button
+            className="px-4 py-2 border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-none hover:bg-white transition-colors duration-100"
+            onClick={handleNextMonth}
+          >
+            Next
+          </button>
+        </div>
+        {/* Add Shift button on right, admin only */}
+        <div className="flex flex-1 justify-end">
+          {user?.role === 'admin' && (
+            <button
+              className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] border border-bradley-red active:shadow-[0_1px_1px_0_#870F0F] flex items-center gap-2"
+              onClick={() => { setShowAddShift(true); setEditingShift(null); setShowShiftModal(true); }}
+            >
+              <Plus size={18} /> Add Shift
+            </button>
+          )}
+        </div>
+      </div>
+      {view === 'monthly' && renderMonthly()}
+      {view === 'daily' && renderDaily()}
+      {view === 'byEmployee' && renderByEmployee()}
+      {showShiftModal && user?.role === 'admin' && (
+        <ShiftModal
+          shift={editingShift}
+          onClose={() => { setShowShiftModal(false); setEditingShift(null); setShowAddShift(false); }}
+          onSave={handleSaveShift}
+          isEdit={!!editingShift}
+        />
       )}
     </div>
   );
+}
+
+// Helper to get a dark version of the color for text
+function getDarkTextColor(bg: string): string {
+  switch (bg) {
+    case '#E57373': return '#870F0F'; // dark pink
+    case '#FFD54F': return '#8A6D1B'; // dark yellow
+    case '#4DB6AC': return '#15544B'; // dark mint
+    case '#9575CD': return '#3B2370'; // dark lavender
+    case '#FFB74D': return '#8A4B1B'; // dark peach
+    case '#64B5F6': return '#174A7E'; // dark blue
+    case '#81C784': return '#256029'; // dark green
+    default: return '#222';
+  }
+}
+
+// Generate recurring shifts for John Smith for May 2025
+function generateRecurringShifts() {
+  const shifts = [];
+  const daysOfWeek = [1, 3, 5]; // Monday, Wednesday, Friday
+  const month = 4; // May (0-indexed)
+  const year = 2025;
+  for (let day = 1; day <= 31; day++) {
+    const date = new Date(year, month, day);
+    if (date.getMonth() === month && daysOfWeek.includes(date.getDay())) {
+      shifts.push({
+        id: `shift-${day}`,
+        employeeId: '1',
+        employeeName: 'John Smith',
+        color: '#FFD6E0',
+        date: format(date, 'MM-dd-yyyy'),
+        startTime: '08:00 AM',
+        endTime: '12:00 PM',
+      });
+    }
+  }
+  return shifts;
+}
+
+// Helper to get full name from employee object
+function getEmployeeName(emp: any) {
+  return emp ? `${emp.firstName} ${emp.lastName}` : '';
 }

@@ -1,99 +1,150 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, where, Timestamp, DocumentData } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuthStore } from '../store/authStore';
-import { format, parse } from 'date-fns';
-
-interface Announcement {
-  id: string;
-  content: string;
-  timestamp: string;
-}
 
 export default function Announcements() {
   const { user } = useAuthStore();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [announcements, setAnnouncements] = useState<Array<{ id: string; content: string; timestamp?: Timestamp; expiration?: Timestamp }>>([]);
+  const [content, setContent] = useState('');
+  const [expiration, setExpiration] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
+  // Fetch announcements, filter out expired
   useEffect(() => {
     const fetchAnnouncements = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/announcements');
-        if (!response.ok) throw new Error('Failed to fetch announcements');
-        const data = await response.json();
-        setAnnouncements(data);
-      } catch (err: unknown) {
-        console.error('Announcements: Failed to fetch announcements:', err);
-        setError('Failed to load announcements. Please try again.');
-      }
+      const now = new Date();
+      const querySnapshot = await getDocs(collection(db, 'announcements'));
+      const anns = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as DocumentData;
+        return {
+          id: docSnap.id,
+          content: data.content || '',
+          timestamp: data.timestamp,
+          expiration: data.expiration,
+        };
+      });
+      // Filter out expired announcements
+      const filtered = anns.filter(a => !a.expiration || (a.expiration instanceof Timestamp && a.expiration.toDate() > now));
+      setAnnouncements(filtered.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
     };
     fetchAnnouncements();
   }, []);
 
-  const handleAddAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAnnouncement.trim()) return;
-    try {
-      const announcement: Announcement = {
-        id: `a${Date.now()}`,
-        content: newAnnouncement,
-        timestamp: new Date().toISOString(),
-      };
-      const response = await fetch('http://localhost:3001/api/announcements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(announcement),
-      });
-      if (!response.ok) throw new Error('Failed to add announcement');
+  // Cleanup expired announcements on load
+  useEffect(() => {
+    const cleanupExpired = async () => {
+      const now = new Date();
+      for (const a of announcements) {
+        if (a.expiration && a.expiration instanceof Timestamp && a.expiration.toDate() <= now) {
+          await deleteDoc(doc(db, 'announcements', a.id));
+        }
+      }
+    };
+    if (announcements.length > 0) cleanupExpired();
+  }, [announcements]);
 
-      setAnnouncements((prev) => [...prev, announcement]);
-      setNewAnnouncement('');
-    } catch (err: unknown) {
-      console.error('Announcements: Failed to add announcement:', err);
-      setError('Failed to add announcement. Please try again.');
+  const handlePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const ann: any = {
+        content,
+        timestamp: Timestamp.now(),
+      };
+      if (expiration) {
+        ann.expiration = Timestamp.fromDate(new Date(expiration));
+      }
+      await addDoc(collection(db, 'announcements'), ann);
+      setContent('');
+      setExpiration('');
+      // Refresh announcements
+      const querySnapshot = await getDocs(collection(db, 'announcements'));
+      const anns = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as DocumentData;
+        return {
+          id: docSnap.id,
+          content: data.content || '',
+          timestamp: data.timestamp,
+          expiration: data.expiration,
+        };
+      });
+      const filtered = anns.filter(a => !a.expiration || (a.expiration instanceof Timestamp && a.expiration.toDate() > new Date()));
+      setAnnouncements(filtered.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+    } catch (err: any) {
+      setError(err.message || 'Failed to post announcement.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!user || user.role !== 'admin') {
-    return <div className="p-6 text-center text-bradley-dark-gray">Access Denied</div>;
-  }
+  const handleDelete = async (id: string) => {
+    await deleteDoc(doc(db, 'announcements', id));
+    setAnnouncements(announcements.filter(a => a.id !== id));
+  };
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 text-bradley-dark-gray">Announcements</h1>
-      {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
-      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Post a New Announcement</h2>
-        <form onSubmit={handleAddAnnouncement} className="mb-6">
+    <div className="p-6 md:pl-48">
+      <h1 className="text-2xl font-bold mb-6">Announcements</h1>
+      {user?.role === 'admin' && (
+        <form onSubmit={handlePost} className="mb-6 space-y-4 bg-white p-4 rounded-lg border border-bradley-medium-gray shadow-bradley max-w-xl">
           <textarea
-            value={newAnnouncement}
-            onChange={(e) => setNewAnnouncement(e.target.value)}
-            className="w-full p-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray focus:outline-none focus:ring-2 focus:ring-bradley-blue"
-            placeholder="Add a new announcement..."
+            className="w-full border border-bradley-dark-gray rounded p-2"
             rows={3}
+            placeholder="Write an announcement..."
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            required
           />
+          <div className="flex items-center gap-4">
+            <label className="font-medium">Expiration Date (optional):</label>
+            <input
+              type="date"
+              className="border border-bradley-dark-gray rounded px-2 py-1"
+              value={expiration}
+              onChange={e => setExpiration(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+          {error && <div className="p-2 bg-red-100 text-red-800 border border-red-300 rounded text-center font-medium">{error}</div>}
           <button
             type="submit"
-            className="mt-2 px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+            className="px-4 py-2 bg-bradley-red text-white rounded-md shadow-[0_4px_0_0_#870F0F] active:shadow-[0_1px_1px_0_#870F0F]"
+            disabled={loading}
           >
-            Post Announcement
+            {loading ? 'Posting...' : 'Post Announcement'}
           </button>
         </form>
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Recent Announcements</h2>
+      )}
+      <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Recent Announcements</h2>
+      <div className="space-y-4">
         {announcements.length === 0 ? (
-          <p className="text-lg text-bradley-medium-gray">No announcements.</p>
+          <p className="text-lg text-bradley-medium-gray">No announcements found.</p>
         ) : (
-          <div className="space-y-2">
-            {announcements
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              .map((ann) => (
-                <div key={ann.id} className="p-2 border-b border-bradley-medium-gray">
-                  <p className="text-bradley-dark-gray">{ann.content}</p>
-                  <p className="text-sm text-bradley-medium-gray">
-                    {format(parse(ann.timestamp, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date()), 'PPpp')}
-                  </p>
+          announcements.map(a => (
+            <div key={a.id} className="bg-white p-4 rounded-lg border border-bradley-medium-gray shadow-bradley flex justify-between items-center">
+              <div>
+                <div className="text-bradley-dark-gray text-base mb-1">{a.content}</div>
+                <div className="text-xs text-bradley-medium-gray">
+                  Posted: {a.timestamp instanceof Timestamp && typeof a.timestamp.toDate === 'function' ? a.timestamp.toDate().toLocaleString() : 'Unknown'}
                 </div>
-              ))}
-          </div>
+                {a.expiration && a.expiration instanceof Timestamp && typeof a.expiration.toDate === 'function' && (
+                  <div className="text-xs text-bradley-medium-gray">Expires: {a.expiration.toDate().toLocaleDateString()}</div>
+                )}
+              </div>
+              {user?.role === 'admin' && (
+                <button
+                  className="ml-4 px-3 py-1 bg-bradley-red text-white rounded shadow hover:bg-bradley-dark-gray"
+                  onClick={() => handleDelete(a.id)}
+                  title="Delete Announcement"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>

@@ -1,18 +1,18 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
-import Footer from './Footer';
 
 export default function MainLayout() {
   const location = useLocation();
   const isLoginPage = location.pathname === '/';
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {!isLoginPage && <Navbar />}
-      <div className="flex-1">
+    <div className="flex min-h-screen">
+      {/* Sidebar (Navbar) */}
+      {!isLoginPage && <Navbar isLoginPage={isLoginPage} />}
+      {/* Main content area, shifted right on desktop */}
+      <main className="flex-1 md:ml-48">
         <Outlet />
-      </div>
-      {!isLoginPage && <Footer />}
+      </main>
     </div>
   );
 }
