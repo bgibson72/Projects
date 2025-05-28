@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, parse, getDay, isBefore, isAfter } from 'date-fns';
-import { Plus, Pencil, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ShiftCoverageRequest } from '../types/shiftCoverageTypes';
 
 const viewOptions = [
@@ -32,24 +31,22 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 4, 1));
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState('monthly');
-  const [shifts, setShifts] = useState<Shift[]>(() => generateRecurringShifts());
+  const [shifts, setShifts] = useState<Shift[]>([]);
+
+  useEffect(() => {
+    // Fetch shifts from Firestore on mount
+    const fetchShifts = async () => {
+      const querySnapshot = await getDocs(collection(db, 'shifts'));
+      const shiftDocs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setShifts(shiftDocs as Shift[]);
+    };
+    fetchShifts();
+  }, []);
+
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [showAddShift, setShowAddShift] = useState(false);
   const [shiftSuccess, setShiftSuccess] = useState<string>('');
-  const [coverageRequests, setCoverageRequests] = useState<ShiftCoverageRequest[]>([]);
-  const [coverageNotification, setCoverageNotification] = useState('');
-  const [coverageError, setCoverageError] = useState('');
-
-  // Fetch coverage requests for this user
-  useEffect(() => {
-    if (!user) return;
-    const fetchCoverageRequests = async () => {
-      const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
-      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequest[]);
-    };
-    fetchCoverageRequests();
-  }, [user]);
 
   // Helper to get all days in the current month view
   const getMonthMatrix = () => {
@@ -113,7 +110,6 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
                         >
                           <span className="font-semibold leading-tight">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
                           <span className="leading-tight text-[11px]">{shortTime(shift.startTime)}-{shortTime(shift.endTime)}</span>
-                          {coverageRequests.some(req => req.shiftId === shift.id && req.status === 'Open') && <AlertTriangle className="inline ml-1 text-yellow-400" size={16} />}
                         </div>
                       ))}
                     </div>
@@ -227,10 +223,11 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
   };
 
   // Shift Modal (Add/Edit)
-  const ShiftModal = ({ shift, onClose, onSave, isEdit }: {
+  const ShiftModal = ({ shift, onClose, onSave, onDelete, isEdit }: {
     shift: Shift | null;
     onClose: () => void;
     onSave: (shift: Shift) => void;
+    onDelete: (id: string | undefined, deleteAll: boolean) => void;
     isEdit: boolean;
   }) => {
     const [date, setDate] = useState<string>(shift?.date || format(selectedDate, 'MM-dd-yyyy'));
@@ -240,6 +237,11 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     const [repeatWeekly, setRepeatWeekly] = useState<boolean>(shift?.repeatWeekly || false);
     const [repeatEndDate, setRepeatEndDate] = useState<string>(shift?.repeatEndDate || '');
     const [assignedEmployee, setAssignedEmployee] = useState<string>(shift?.employeeId || employees[0].id);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [deleteAllRepeats, setDeleteAllRepeats] = useState(false);
+    const [deleteStatus, setDeleteStatus] = useState<string>('');
+    const [deleteError, setDeleteError] = useState<string>('');
+    const [deleting, setDeleting] = useState(false);
 
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -264,9 +266,46 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
       onSave(newShift);
     };
 
+    const handleDelete = () => {
+      if (shift?.repeatWeekly || (shift?.repeatDays && shift.repeatDays.length > 0)) {
+        setShowDeleteDialog(true);
+      } else {
+        doDelete(false);
+      }
+    };
+
+    const doDelete = async (allRepeats: boolean) => {
+      setDeleting(true);
+      setDeleteStatus('');
+      setDeleteError('');
+      try {
+        await onDelete(shift?.id, allRepeats);
+        setDeleteStatus('Shift deleted successfully!');
+        setTimeout(() => {
+          setDeleting(false);
+          setDeleteStatus('');
+          onClose();
+        }, 1200);
+      } catch (err: any) {
+        setDeleteError(err.message || 'Failed to delete shift.');
+        setDeleting(false);
+      }
+    };
+
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-        <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
+        <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md relative">
+          {/* Delete button in upper right */}
+          {isEdit && (
+            <button
+              className="absolute top-4 right-4 text-white bg-bradley-red rounded-full p-2 hover:bg-bradley-dark-gray transition"
+              title="Delete shift"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              <Trash2 size={20} />
+            </button>
+          )}
           <h2 className="text-xl font-bold mb-4">{isEdit ? 'Edit Shift' : 'Add Shift'}</h2>
           <form onSubmit={handleSave} className="space-y-4">
             <div>
@@ -370,21 +409,66 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
               </button>
             </div>
           </form>
+
+          {/* Delete dialog for repeating shifts */}
+          {showDeleteDialog && (
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+              <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-sm">
+                <h3 className="text-lg font-bold mb-4">Delete Repeating Shift</h3>
+                <p className="mb-4">This shift is part of a repeating series. What would you like to do?</p>
+                <div className="flex flex-col gap-2 mb-4">
+                  <button
+                    className="px-4 py-2 bg-bradley-red text-white rounded-md"
+                    onClick={() => { setShowDeleteDialog(false); doDelete(false); }}
+                    disabled={deleting}
+                  >
+                    Delete Only This Shift
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-bradley-red text-white rounded-md"
+                    onClick={() => { setShowDeleteDialog(false); doDelete(true); }}
+                    disabled={deleting}
+                  >
+                    Delete All Repeating Shifts
+                  </button>
+                </div>
+                <button
+                  className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md"
+                  onClick={() => setShowDeleteDialog(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {/* Delete feedback in modal */}
+          {deleteStatus && (
+            <div className="mb-4 p-2 bg-green-100 text-green-800 rounded text-center">{deleteStatus}</div>
+          )}
+          {deleteError && (
+            <div className="mb-4 p-2 bg-red-100 text-red-800 rounded text-center">{deleteError}</div>
+          )}
         </div>
       </div>
     );
   };
 
   // Add/Edit shift logic
-  const handleSaveShift = (shift: Shift) => {
+  const handleSaveShift = async (shift: Shift) => {
     if (shift.id) {
       // Edit existing
       setShifts(shifts.map(s => s.id === shift.id ? { ...s, ...shift } : s));
+      const { id, ...shiftData } = shift;
+      await updateDoc(doc(db, 'shifts', shift.id), shiftData);
       setShiftSuccess('Shift updated successfully!');
     } else {
       // Add new
       const newId = `shift-${Date.now()}`;
-      setShifts([...shifts, { ...shift, id: newId }]);
+      const newShift = { ...shift, id: newId };
+      setShifts([...shifts, newShift]);
+      const { id, ...shiftData } = newShift;
+      await setDoc(doc(db, 'shifts', newId), shiftData);
       setShiftSuccess('Shift added successfully!');
     }
     setShowShiftModal(false);
@@ -393,29 +477,21 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     setTimeout(() => setShiftSuccess(''), 3000);
   };
 
-  // Claim a coverage request
-  const handleClaim = useCallback(async (req: ShiftCoverageRequest) => {
-    try {
-      const functions = getFunctions();
-      const claim = httpsCallable(functions, 'claimShiftCoverageRequest');
-      await claim({ requestId: req.id });
-      setCoverageNotification('You have claimed this shift.');
-    } catch (err: any) {
-      setCoverageError(err.message || 'Failed to claim shift.');
+  // Delete shift(s)
+  const handleDeleteShift = async (id: string | undefined, deleteAll: boolean) => {
+    if (!id) return;
+    if (deleteAll) {
+      // Delete all repeating shifts for this employee
+      const toDelete = shifts.filter(s => s.repeatWeekly && s.employeeId === editingShift?.employeeId);
+      await Promise.all(toDelete.map(s => deleteDoc(doc(db, 'shifts', s.id))));
+      setShifts(shifts.filter(s => !(s.repeatWeekly && s.employeeId === editingShift?.employeeId)));
+    } else {
+      await deleteDoc(doc(db, 'shifts', id));
+      setShifts(shifts.filter(s => s.id !== id));
     }
-  }, []);
-
-  // Return a claimed shift
-  const handleReturn = useCallback(async (req: ShiftCoverageRequest) => {
-    try {
-      const functions = getFunctions();
-      const ret = httpsCallable(functions, 'returnShiftCoverageRequest');
-      await ret({ requestId: req.id });
-      setCoverageNotification('You have returned this shift to open coverage.');
-    } catch (err: any) {
-      setCoverageError(err.message || 'Failed to return shift.');
-    }
-  }, []);
+    setShiftSuccess('Shift deleted successfully!');
+    setTimeout(() => setShiftSuccess(''), 3000);
+  };
 
   // Navigation
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -428,8 +504,6 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
           {shiftSuccess}
         </div>
       )}
-      {coverageNotification && <div className="mb-2 p-2 bg-green-100 text-green-800 rounded">{coverageNotification}</div>}
-      {coverageError && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{coverageError}</div>}
       <div className="flex items-center justify-between mb-6">
         {/* View options on left */}
         <div className="flex gap-2 items-center flex-1">
@@ -479,6 +553,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
           shift={editingShift}
           onClose={() => { setShowShiftModal(false); setEditingShift(null); setShowAddShift(false); }}
           onSave={handleSaveShift}
+          onDelete={handleDeleteShift}
           isEdit={!!editingShift}
         />
       )}
@@ -498,29 +573,6 @@ function getDarkTextColor(bg: string): string {
     case '#81C784': return '#256029'; // dark green
     default: return '#222';
   }
-}
-
-// Generate recurring shifts for John Smith for May 2025
-function generateRecurringShifts() {
-  const shifts = [];
-  const daysOfWeek = [1, 3, 5]; // Monday, Wednesday, Friday
-  const month = 4; // May (0-indexed)
-  const year = 2025;
-  for (let day = 1; day <= 31; day++) {
-    const date = new Date(year, month, day);
-    if (date.getMonth() === month && daysOfWeek.includes(date.getDay())) {
-      shifts.push({
-        id: `shift-${day}`,
-        employeeId: '1',
-        employeeName: 'John Smith',
-        color: '#FFD6E0',
-        date: format(date, 'MM-dd-yyyy'),
-        startTime: '08:00 AM',
-        endTime: '12:00 PM',
-      });
-    }
-  }
-  return shifts;
 }
 
 // Helper to get full name from employee object

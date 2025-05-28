@@ -34,12 +34,13 @@ export default function Navbar({ isLoginPage }: NavbarProps) {
   return (
     <>
       {/* Static Sidebar for desktop */}
-      <aside className="hidden md:flex md:w-48 md:flex-col h-screen fixed left-0 top-0 bg-bradley-red shadow-lg z-40">
+      <aside className="hidden md:flex md:w-60 md:flex-col h-screen fixed left-0 top-0 bg-bradley-red shadow-lg z-40">
         <div className="flex flex-col grow gap-y-5 overflow-y-auto px-4 py-6 h-full">
-          <div className="flex flex-col items-center h-16 shrink-0 mb-2">
-            <img src="/logo.png" alt="Logo" className="h-8 mb-2" />
-            <span className="text-lg font-bold text-white text-center leading-tight">Bradley Scheduler</span>
+          <div className="flex flex-col items-center h-20 shrink-0 mb-2">
+            <img src="/logo.png" alt="Logo" className="h-12 mb-2" />
+            <span className="text-base font-bold text-white text-center leading-tight">Bradley IT Service Desk Scheduler</span>
           </div>
+          <div className="h-8" /> {/* Spacer between title and nav */}
           <nav className="flex flex-1 flex-col">
             <ul className="flex flex-1 flex-col gap-y-2">
               <li>
@@ -84,14 +85,15 @@ export default function Navbar({ isLoginPage }: NavbarProps) {
       {/* Mobile sidebar overlay */}
       <div className={sidebarOpen ? "absolute inset-0 z-50 flex md:hidden" : "hidden"}>
         <div className="fixed inset-0 bg-black bg-opacity-40" onClick={() => setSidebarOpen(false)}></div>
-        <div className="relative flex w-48 flex-col bg-bradley-red px-4 py-6 shadow-lg h-full">
+        <div className="relative flex w-60 flex-col bg-bradley-red px-4 py-6 shadow-lg h-full">
           <button className="absolute top-4 right-4 text-white" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
             <X size={28} />
           </button>
-          <div className="flex flex-col items-center h-16 shrink-0 mb-2">
-            <img src="/logo.png" alt="Logo" className="h-8 mb-2" />
-            <span className="text-lg font-bold text-white text-center leading-tight">Bradley Scheduler</span>
+          <div className="flex flex-col items-center h-20 shrink-0 mb-2">
+            <img src="/logo.png" alt="Logo" className="h-12 mb-2" />
+            <span className="text-base font-bold text-white text-center leading-tight">Bradley IT Service Desk Scheduler</span>
           </div>
+          <div className="h-8" /> {/* Spacer between title and nav */}
           <nav className="flex flex-1 flex-col">
             <ul className="flex flex-1 flex-col gap-y-2">
               <li>
@@ -138,9 +140,9 @@ export default function Navbar({ isLoginPage }: NavbarProps) {
         <button onClick={() => setSidebarOpen(true)} className="mr-3" aria-label="Open sidebar">
           <Menu size={28} />
         </button>
-        <span className="text-lg font-bold flex items-center gap-2">
+        <span className="text-base font-bold flex items-center gap-2">
           <img src="/logo.png" alt="Logo" className="h-7" />
-          Bradley Scheduler
+          Bradley IT Service Desk Scheduler
         </span>
       </div>
     </>

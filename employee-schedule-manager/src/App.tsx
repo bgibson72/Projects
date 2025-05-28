@@ -8,23 +8,14 @@ import Schedule from './pages/Schedule';
 import Employees from './components/Employees';
 import Announcements from './components/Announcements';
 import NotFound from './pages/NotFound';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
 
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, checkAuth } = useAuthStore();
-  const [employees, setEmployees] = useState([
-    {
-      id: '1',
-      firstName: 'John',
-      lastName: 'Smith',
-      position: 'Technician',
-      email: 'john.smith@example.com',
-      phone: '555-1234',
-      color: '#FFD6E0',
-    },
-    // Add more employees as needed
-  ]);
+  const [employees, setEmployees] = useState<any[]>([]);
 
   useEffect(() => {
     console.log('App useEffect triggered, location:', location.pathname);
@@ -32,6 +23,16 @@ export default function App() {
       navigate('/');
     }
   }, [checkAuth, navigate, location]);
+
+  useEffect(() => {
+    // Fetch employees from Firestore on mount
+    const fetchEmployees = async () => {
+      const querySnapshot = await getDocs(collection(db, 'employees'));
+      const emps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEmployees(emps);
+    };
+    fetchEmployees();
+  }, []);
 
   console.log('App rendered, location:', location.pathname, 'user:', user);
 

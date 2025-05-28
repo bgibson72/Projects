@@ -3,12 +3,12 @@ import { useAuthStore } from '../store/authStore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import { Shift, ShiftCoverageRequest } from '../types/shiftCoverageTypes';
+import { Shift, ShiftCoverageRequest as ShiftCoverageRequestType } from '../types/shiftCoverageTypes';
 
 export default function ShiftCoverageRequest() {
   const { user } = useAuthStore();
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [coverageRequests, setCoverageRequests] = useState<ShiftCoverageRequest[]>([]);
+  const [coverageRequests, setCoverageRequests] = useState<ShiftCoverageRequestType[]>([]);
   const [showRequest, setShowRequest] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [coverageStart, setCoverageStart] = useState('');
@@ -16,6 +16,8 @@ export default function ShiftCoverageRequest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [collisionWarning, setCollisionWarning] = useState('');
+  const [pendingClaim, setPendingClaim] = useState<ShiftCoverageRequestType | null>(null);
 
   // Fetch user's shifts and all open coverage requests
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function ShiftCoverageRequest() {
     };
     const fetchCoverageRequests = async () => {
       const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
-      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequest[]);
+      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequestType[]);
     };
     fetchShifts();
     fetchCoverageRequests();
@@ -46,8 +48,6 @@ export default function ShiftCoverageRequest() {
       const addCoverage = httpsCallable(functions, 'addShiftCoverageRequest');
       await addCoverage({
         shiftId: selectedShift.id,
-        originalOwnerId: user.id,
-        originalOwnerName: user.name,
         date: selectedShift.date,
         startTime: selectedShift.startTime,
         endTime: selectedShift.endTime,
@@ -59,6 +59,9 @@ export default function ShiftCoverageRequest() {
       setCoverageEnd('');
       setSelectedShift(null);
       setSuccess('Coverage request submitted!');
+      // Refresh
+      const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
+      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequestType[]);
     } catch (err: any) {
       setError(err.message || 'Failed to request coverage.');
     } finally {
@@ -66,16 +69,27 @@ export default function ShiftCoverageRequest() {
     }
   };
 
-  // Claim a coverage request
-  const handleClaim = async (req: ShiftCoverageRequest) => {
+  // Claim a coverage request (with collision detection)
+  const handleClaim = async (req: ShiftCoverageRequestType, force = false) => {
     setLoading(true);
     setError('');
     setSuccess('');
+    setCollisionWarning('');
+    setPendingClaim(null);
     try {
       const functions = getFunctions();
       const claim = httpsCallable(functions, 'claimShiftCoverageRequest');
-      await claim({ requestId: req.id });
+      const result: any = await claim({ requestId: req.id, force });
+      if (result.data && result.data.collision && !force) {
+        setCollisionWarning(result.data.message);
+        setPendingClaim(req);
+        setLoading(false);
+        return;
+      }
       setSuccess('Shift claimed!');
+      // Refresh
+      const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
+      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequestType[]);
     } catch (err: any) {
       setError(err.message || 'Failed to claim shift.');
     } finally {
@@ -84,7 +98,7 @@ export default function ShiftCoverageRequest() {
   };
 
   // Return a claimed shift
-  const handleReturn = async (req: ShiftCoverageRequest) => {
+  const handleReturn = async (req: ShiftCoverageRequestType) => {
     setLoading(true);
     setError('');
     setSuccess('');
@@ -93,6 +107,9 @@ export default function ShiftCoverageRequest() {
       const ret = httpsCallable(functions, 'returnShiftCoverageRequest');
       await ret({ requestId: req.id });
       setSuccess('Shift returned to open coverage.');
+      // Refresh
+      const querySnapshot = await getDocs(collection(db, 'shiftCoverageRequests'));
+      setCoverageRequests(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShiftCoverageRequestType[]);
     } catch (err: any) {
       setError(err.message || 'Failed to return shift.');
     } finally {
@@ -101,21 +118,25 @@ export default function ShiftCoverageRequest() {
   };
 
   // UI
+  if (!user) return null;
+  const isEmployee = user.role === 'employee';
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
       <h1 className="text-2xl font-bold mb-4">Shift Coverage Requests</h1>
       {error && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{error}</div>}
       {success && <div className="mb-2 p-2 bg-green-100 text-green-800 rounded">{success}</div>}
-      {/* Request Coverage Button */}
-      <button
-        className="mb-4 px-4 py-2 bg-bradley-red text-white rounded-md"
-        onClick={() => setShowRequest(true)}
-        disabled={loading}
-      >
-        Request Shift Coverage
-      </button>
-      {/* Request Coverage Modal */}
-      {showRequest && (
+      {/* Request Coverage Button (employees only) */}
+      {isEmployee && (
+        <button
+          className="mb-4 px-4 py-2 bg-bradley-red text-white rounded-md"
+          onClick={() => setShowRequest(true)}
+          disabled={loading}
+        >
+          Request Shift Coverage
+        </button>
+      )}
+      {/* Request Coverage Modal (employees only) */}
+      {isEmployee && showRequest && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">Request Coverage</h2>
@@ -179,6 +200,31 @@ export default function ShiftCoverageRequest() {
           </div>
         </div>
       )}
+      {/* Collision Warning Modal */}
+      {collisionWarning && pendingClaim && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Shift Conflict</h2>
+            <p className="mb-4 text-bradley-dark-gray">{collisionWarning}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md"
+                onClick={() => { setCollisionWarning(''); setPendingClaim(null); }}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-bradley-red text-white rounded-md"
+                onClick={() => handleClaim(pendingClaim, true)}
+                disabled={loading}
+              >
+                Yes, Claim Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Open Coverage Requests Board */}
       <h2 className="text-xl font-semibold mt-8 mb-4">Open Coverage Requests</h2>
       <div className="overflow-x-auto">
@@ -215,22 +261,6 @@ export default function ShiftCoverageRequest() {
             )}
           </tbody>
         </table>
-      </div>
-      {/* Audit Trail for each request (expandable) */}
-      <h2 className="text-xl font-semibold mt-8 mb-4">Audit Trail</h2>
-      <div className="space-y-4">
-        {coverageRequests.map(req => (
-          <div key={req.id} className="border rounded p-3 bg-bradley-light-gray">
-            <div className="font-semibold mb-1">{req.date} {req.requestedCoverageStart}-{req.requestedCoverageEnd} ({req.status})</div>
-            <ul className="text-sm">
-              {req.auditTrail?.map((entry, idx) => (
-                <li key={idx}>
-                  <span className="font-bold">{entry.action}</span> by {entry.userName} at {new Date(entry.timestamp).toLocaleString()} {entry.details && <span>- {entry.details}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
       </div>
     </div>
   );

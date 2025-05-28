@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ShiftCoverageRequest } from '../types/shiftCoverageTypes';
 import { AlertTriangle } from 'lucide-react';
+import ShiftCoverageRequestComponent from './ShiftCoverageRequest';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
@@ -196,27 +197,6 @@ export default function Dashboard() {
     </div>
   );
 
-  // Coverage Audit Trail Card
-  const CoverageAuditTrailCard = (
-    <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley flex-1 ml-2">
-      <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Coverage Audit Trail</h2>
-      <div className="space-y-4">
-        {shiftCoverageRequests.map(req => (
-          <div key={req.id} className="border rounded p-3 bg-bradley-light-gray">
-            <div className="font-semibold mb-1">{req.date} {req.requestedCoverageStart}-{req.requestedCoverageEnd} ({req.status})</div>
-            <ul className="text-sm">
-              {req.auditTrail?.map((entry, idx) => (
-                <li key={idx}>
-                  <span className="font-bold">{entry.action}</span> by {entry.userName} at {new Date(entry.timestamp).toLocaleString()} {entry.details && <span>- {entry.details}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
   // Employee: add "Your Coverage Requests" card
   const YourCoverageRequestsCard = user?.role === 'employee' && (
     <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley flex-1 ml-2">
@@ -250,18 +230,29 @@ export default function Dashboard() {
     </div>
   );
 
+  function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning,';
+    if (hour < 18) return 'Good afternoon,';
+    return 'Good evening,';
+  }
+  function getFirstName(name: string) {
+    if (!name) return '';
+    return name.split(' ')[0];
+  }
+
   // Layout
   return (
-    <div className="p-6 md:pl-48">
-      <h1 className="text-2xl font-bold mb-6">Welcome, {user?.name || 'Employee'}!</h1>
+    <div className="p-6 md:pl-60">
+      <h1 className="text-2xl font-bold mb-6">{getGreeting()} {getFirstName(user?.name || '')}!</h1>
       {notification && <div className="mb-2 p-2 bg-green-100 text-green-800 rounded">{notification}</div>}
       {error && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{error}</div>}
       {WeeklyOverview}
       {AnnouncementsCard}
+      {user?.role === 'employee' && <ShiftCoverageRequestComponent />}
       <div className="flex flex-row gap-4">
         {CoverageRequestsCard}
-        {user?.role === 'admin' ? CoverageAuditTrailCard : YourCoverageRequestsCard}
-        {user?.role === 'employee' && CoverageAuditTrailCard}
+        {user?.role === 'admin' ? null : YourCoverageRequestsCard}
       </div>
     </div>
   );
