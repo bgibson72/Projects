@@ -368,7 +368,7 @@ export default function Employees({ employees, setEmployees }: { employees: any[
       )}
       <div className="bg-white text-bradley-dark-gray p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] mb-6 dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
         <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray dark:text-gray-200">Current Roster</h2>
-        {employees.length === 0 ? (
+        {employees.filter(emp => emp.id !== 'u9RkIeB0mvTdoIdzC92YHnPLuvP2').length === 0 ? (
           <p className="text-lg text-bradley-medium-gray">No employees found.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -386,7 +386,7 @@ export default function Employees({ employees, setEmployees }: { employees: any[
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => (
+                {employees.filter(emp => emp.id !== 'u9RkIeB0mvTdoIdzC92YHnPLuvP2').map((emp) => (
                   <tr key={emp.id} className="border-t border-bradley-dark-gray dark:border-bradley-light-gray">
                     <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.firstName} {emp.lastName}</td>
                     <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.position}</td>

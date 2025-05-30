@@ -154,7 +154,8 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     // Use selectedDate to determine the week
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
     const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-    const employeeRows = employees.map(emp => {
+    const filteredEmployees = employees.filter(emp => emp.id !== 'u9RkIeB0mvTdoIdzC92YHnPLuvP2');
+    const employeeRows = filteredEmployees.map(emp => {
       const row = weekDays.map((date, idx) => {
         const dateStr = format(date, 'MM-dd-yyyy');
         const empShifts = shifts.filter(s =>
@@ -241,6 +242,8 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     const [datePickerOpen, setDatePickerOpen] = useState(false);
     const [repeatEndDatePickerOpen, setRepeatEndDatePickerOpen] = useState(false);
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    const filteredEmployeesForModal = employees.filter(emp => emp.id !== 'u9RkIeB0mvTdoIdzC92YHnPLuvP2');
 
     // Generate 30-min time options from 8:00 AM to 10:00 PM
     const timeOptions = [];
@@ -510,7 +513,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
                 onChange={e => setAssignedEmployee(e.target.value)}
                 style={{ backgroundColor: '#fff', color: '#222', opacity: 1 }}
               >
-                {employees.map(emp => (
+                {filteredEmployeesForModal.map(emp => (
                   <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
                 ))}
               </select>
