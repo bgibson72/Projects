@@ -13,8 +13,7 @@ import { enUS } from 'date-fns/locale';
 registerLocale('en-US', enUS);
 
 const viewOptions = [
-  { label: 'Monthly', value: 'monthly' },
-  { label: 'Daily', value: 'daily' },
+  { label: 'By Date', value: 'monthly' },
   { label: 'By Employee', value: 'byEmployee' },
 ];
 
@@ -149,64 +148,45 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     return `${hour}${ampm}`;
   }
 
-  // Daily View
-  const renderDaily = () => {
-    const dayShifts = shifts.filter(s => s.date === format(selectedDate, 'MM-dd-yyyy'));
-    return (
-      <div className="bg-white p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] mt-4 dark:bg-bradley-dark-card dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray dark:text-bradley-light-gray">Shifts for {format(selectedDate, 'MM-dd-yyyy')}</h2>
-        {dayShifts.length === 0 ? (
-          <p className="text-lg text-bradley-medium-gray">No shifts scheduled.</p>
-        ) : (
-          <ul className="space-y-2">
-            {dayShifts.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(shift => (
-              <li key={shift.id} className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 rounded-full" style={{ background: shift.color }}></span>
-                <span className="font-medium text-bradley-dark-gray dark:text-bradley-light-gray">{shift.startTime} - {shift.endTime}</span>
-                <span className="text-bradley-dark-gray dark:text-bradley-light-gray">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
-                {user?.role === 'admin' && (
-                  <button onClick={() => { setEditingShift(shift); setShowShiftModal(true); }} className="ml-2 text-bradley-dark-gray dark:text-bradley-light-gray"><Pencil size={16} /></button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    );
-  };
-
   // By Employee View
   const renderByEmployee = () => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Use selectedDate to determine the week
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
     const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
     const employeeRows = employees.map(emp => {
       const row = weekDays.map((date, idx) => {
+        const dateStr = format(date, 'MM-dd-yyyy');
         const empShifts = shifts.filter(s =>
-          s.employeeId === emp.id &&
-          isSameDay(new Date(s.date), date)
+          s.employeeId === emp.id && s.date === dateStr
         );
         return (
-          <td key={days[idx]} className="px-2 py-1 border-t-2 border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray">
-            {empShifts.map(shift => (
-              <div
-                key={shift.id}
-                className={`mb-1 px-2 py-1 rounded text-xs flex items-center justify-between ${user?.role === 'admin' ? 'cursor-pointer hover:opacity-80' : ''}`}
-                style={{
-                  background: (employees.find(e => e.id === shift.employeeId)?.color || shift.color),
-                  color: '#fff'
-                }}
-                onClick={user?.role === 'admin' ? () => { setEditingShift(shift); setShowShiftModal(true); } : undefined}
-              >
-                <span>{shift.startTime} - {shift.endTime}</span>
+          <td key={days[idx]} className="px-2 py-1 border-t-2 border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray align-top">
+            {empShifts.length === 0 ? null : (
+              <div className="flex flex-col gap-1">
+                {empShifts.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(shift => (
+                  <div
+                    key={shift.id}
+                    className={`mb-1 px-2 py-1 rounded text-xs flex items-center gap-1 ${user?.role === 'admin' ? 'cursor-pointer hover:opacity-80' : ''}`}
+                    style={{
+                      background: emp.color || shift.color,
+                      color: '#fff',
+                      minHeight: '22px',
+                      fontWeight: 500
+                    }}
+                    onClick={user?.role === 'admin' ? () => { setEditingShift(shift); setShowShiftModal(true); } : undefined}
+                  >
+                    <span>{shift.startTime} - {shift.endTime}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </td>
         );
       });
       return (
         <tr key={emp.id}>
-          <td className="px-2 py-1 border-t-2 border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-semibold text-bradley-dark-gray dark:text-bradley-light-gray">{getEmployeeName(emp)}</td>
+          <td className="px-2 py-1 border-t-2 border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-semibold text-bradley-dark-gray dark:text-bradley-light-gray align-top" style={{ minWidth: 140 }}>{getEmployeeName(emp)}</td>
           {row}
         </tr>
       );
@@ -215,14 +195,14 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
       <div className="bg-white p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] overflow-x-auto dark:bg-bradley-dark-card dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
         <table className="min-w-full border-2 border-bradley-medium-gray dark:border-bradley-light-gray rounded-lg overflow-hidden table-fixed">
           <colgroup>
-            <col style={{ width: '160px' }} />
+            <col style={{ width: '140px' }} />
             {Array.from({ length: 7 }).map((_, i) => (
               <col key={i} style={{ width: '120px' }} />
             ))}
           </colgroup>
           <thead className="border-b-2 border-bradley-medium-gray dark:border-bradley-light-gray">
             <tr className="bg-bradley-light-gray dark:bg-bradley-dark-surface">
-              <th className="px-2 py-2 text-left text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '160px' }}>Employee</th>
+              <th className="px-2 py-2 text-left text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '140px' }}>Employee</th>
               {weekDays.map((date, idx) => (
                 <th key={idx} className="px-2 py-2 text-center text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '120px' }}>
                   {format(date, 'EEE, MMM d')}
@@ -242,7 +222,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
   const ShiftModal = ({ shift, onClose, onSave, onDelete, isEdit }: {
     shift: Shift | null;
     onClose: () => void;
-    onSave: (shift: Shift) => void;
+    onSave: (shift: Shift | Shift[]) => void;
     onDelete: (id: string | undefined, deleteAll: boolean) => void;
     isEdit: boolean;
   }) => {
@@ -279,6 +259,41 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
 
     const handleSave = (e: React.FormEvent) => {
       e.preventDefault();
+      // If repeating weekly and days selected, generate all shifts for each week/day in range
+      if (repeatWeekly && repeatDays.length > 0 && repeatEndDate && date) {
+        const start = new Date(date);
+        const end = new Date(repeatEndDate);
+        // Find the first week start (Sunday) on or before the start date
+        let weekStart = new Date(start);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const shiftsToAdd: Shift[] = [];
+        for (let d = new Date(weekStart); d <= end; d.setDate(d.getDate() + 7)) {
+          // For each selected day of week
+          repeatDays.forEach(dayIdx => {
+            // Calculate the date for this day in the current week
+            const shiftDate = new Date(d);
+            shiftDate.setDate(shiftDate.getDate() + (dayIdx - shiftDate.getDay()));
+            // Only add if in range
+            if (shiftDate >= start && shiftDate <= end) {
+              shiftsToAdd.push({
+                id: '', // id will be set in handleSaveShift
+                date: format(shiftDate, 'MM-dd-yyyy'),
+                startTime,
+                endTime,
+                employeeId: assignedEmployee,
+                employeeName: getEmployeeName(employees.find(e => e.id === assignedEmployee)),
+                color: employees.find(e => e.id === assignedEmployee)?.color || '#FFD6E0',
+                repeatDays,
+                repeatWeekly,
+                repeatEndDate: format(end, 'MM-dd-yyyy'),
+              });
+            }
+          });
+        }
+        onSave(shiftsToAdd);
+        return;
+      }
+      // Otherwise, single shift
       const newShift: Shift = {
         id: shift?.id || '',
         date: date ? format(date, 'MM-dd-yyyy') : '',
@@ -562,22 +577,34 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
 
   };
 
-  // Add/Edit shift logic
-  const handleSaveShift = async (shift: Shift) => {
-    if (shift.id) {
-      // Edit existing
-      setShifts(shifts.map(s => s.id === shift.id ? { ...s, ...shift } : s));
-      const { id, ...shiftData } = shift;
-      await updateDoc(doc(db, 'shifts', shift.id), shiftData);
-      setShiftSuccess('Shift updated successfully!');
+  // Add/Edit shift logic (now supports single or array of shifts)
+  const handleSaveShift = async (shiftOrShifts: Shift | Shift[]) => {
+    if (Array.isArray(shiftOrShifts)) {
+      // Multiple shifts (repeating)
+      const newShifts = shiftOrShifts.map(s => ({ ...s, id: `shift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }));
+      setShifts([...shifts, ...newShifts]);
+      await Promise.all(newShifts.map(async s => {
+        const { id, ...shiftData } = s;
+        await setDoc(doc(db, 'shifts', id), shiftData);
+      }));
+      setShiftSuccess('Repeating shifts added successfully!');
     } else {
-      // Add new
-      const newId = `shift-${Date.now()}`;
-      const newShift = { ...shift, id: newId };
-      setShifts([...shifts, newShift]);
-      const { id, ...shiftData } = newShift;
-      await setDoc(doc(db, 'shifts', newId), shiftData);
-      setShiftSuccess('Shift added successfully!');
+      const shift = shiftOrShifts;
+      if (shift.id) {
+        // Edit existing
+        setShifts(shifts.map(s => s.id === shift.id ? { ...s, ...shift } : s));
+        const { id, ...shiftData } = shift;
+        await updateDoc(doc(db, 'shifts', shift.id), shiftData);
+        setShiftSuccess('Shift updated successfully!');
+      } else {
+        // Add new
+        const newId = `shift-${Date.now()}`;
+        const newShift = { ...shift, id: newId };
+        setShifts([...shifts, newShift]);
+        const { id, ...shiftData } = newShift;
+        await setDoc(doc(db, 'shifts', newId), shiftData);
+        setShiftSuccess('Shift added successfully!');
+      }
     }
     setShowShiftModal(false);
     setShowAddShift(false);
@@ -624,27 +651,62 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
               {opt.label}
             </button>
           ))}
-        </div>
-        {/* Month name and navigation in center */}
-        <div className="flex items-center gap-2 flex-1 justify-center">
           <button
-            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md hover:bg-white transition-colors duration-100 flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none"
-            onClick={handlePrevMonth}
-            aria-label="Previous Month"
+            className={`px-3 py-2 rounded-md font-medium text-bradley-light-gray transition-colors duration-100 focus:ring-2 focus:ring-bradley-red focus:outline-none ${((view === 'today') ? 'bg-bradley-red' : 'bg-bradley-medium-gray')}`}
+            style={{ marginLeft: '8px' }}
+            onClick={() => {
+              if (view === 'byEmployee') setSelectedDate(new Date());
+              else setCurrentMonth(new Date());
+            }}
+            aria-label="Go to Today"
           >
-            <ChevronLeft size={18} />
-          </button>
-          <span className="text-2xl font-bold mx-2 min-w-[180px] text-center flex items-center justify-center text-bradley-dark-gray dark:text-bradley-light-gray">
-            {format(currentMonth, 'MMMM yyyy')}
-          </span>
-          <button
-            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md hover:bg-white transition-colors duration-100 flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none"
-            onClick={handleNextMonth}
-            aria-label="Next Month"
-          >
-            <ChevronRight size={18} />
+            Today
           </button>
         </div>
+        {/* Navigation arrows and label for By Employee view */}
+        {view === 'byEmployee' ? (
+          <div className="flex items-center gap-2 flex-1 justify-center">
+            <button
+              className="px-4 py-2 rounded-md flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none bg-bradley-light-gray text-bradley-dark-gray dark:bg-bradley-dark-gray dark:text-bradley-light-gray border-none shadow-none hover:bg-white dark:hover:bg-bradley-dark-surface"
+              onClick={() => setSelectedDate(addDays(selectedDate, -7))}
+              aria-label="Previous Week"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-2xl font-bold mx-2 min-w-[180px] text-center flex items-center justify-center text-bradley-dark-gray dark:text-bradley-light-gray">
+              {format(startOfWeek(selectedDate, { weekStartsOn: 0 }), 'MMM d')} - {format(addDays(startOfWeek(selectedDate, { weekStartsOn: 0 }), 6), 'MMM d')}
+            </span>
+            <button
+              className="px-4 py-2 rounded-md flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none bg-bradley-light-gray text-bradley-dark-gray dark:bg-bradley-dark-gray dark:text-bradley-light-gray border-none shadow-none hover:bg-white dark:hover:bg-bradley-dark-surface"
+              onClick={() => setSelectedDate(addDays(selectedDate, 7))}
+              aria-label="Next Week"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-1 justify-center">
+            <button
+              className="px-4 py-2 rounded-md flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none bg-bradley-light-gray text-bradley-dark-gray dark:bg-bradley-dark-gray dark:text-bradley-light-gray border-none shadow-none hover:bg-white dark:hover:bg-bradley-dark-surface"
+              onClick={handlePrevMonth}
+              aria-label="Previous Month"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-2xl font-bold mx-2 min-w-[180px] text-center flex items-center justify-center text-bradley-dark-gray dark:text-bradley-light-gray">
+              {view === 'byEmployee'
+                ? `${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), 'MMM d')} - ${format(addDays(startOfWeek(selectedDate, { weekStartsOn: 0 }), 6), 'MMM d')}`
+                : format(currentMonth, 'MMMM yyyy')}
+            </span>
+            <button
+              className="px-4 py-2 rounded-md flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none bg-bradley-light-gray text-bradley-dark-gray dark:bg-bradley-dark-gray dark:text-bradley-light-gray border-none shadow-none hover:bg-white dark:hover:bg-bradley-dark-surface"
+              onClick={handleNextMonth}
+              aria-label="Next Month"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
         {/* Add Shift button on right, admin only */}
         <div className="flex flex-1 justify-end">
           {user?.role === 'admin' && (
@@ -658,7 +720,6 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
         </div>
       </div>
       {view === 'monthly' && renderMonthly()}
-      {view === 'daily' && renderDaily()}
       {view === 'byEmployee' && renderByEmployee()}
       {showShiftModal && user?.role === 'admin' && (
         <ShiftModal

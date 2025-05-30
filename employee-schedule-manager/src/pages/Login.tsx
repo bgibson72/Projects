@@ -175,7 +175,7 @@ export default function Login() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="mt-1 w-full px-4 py-2 border border-bradley-medium-gray rounded-md text-bradley-light-gray bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue text-lg"
+                className={`mt-1 w-full px-4 py-2 border border-bradley-medium-gray rounded-md bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue text-lg text-bradley-dark-gray dark:text-bradley-light-gray`}
                 style={{ minWidth: 320 }}
                 required
               />
@@ -186,7 +186,7 @@ export default function Login() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-light-gray bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                className={`mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue text-bradley-dark-gray dark:text-bradley-light-gray`}
                 required
               />
             </div>

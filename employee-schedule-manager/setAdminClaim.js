@@ -5,7 +5,7 @@ admin.initializeApp({
   credential: admin.credential.cert(require('./schedule-manager-496e0-firebase-adminsdk-fbsvc-d48b52a132.json')),
 });
 
-const uid = 'DnNQCQmFsnbYh83KODntm2bHmY83'; // Replace with your Firebase Auth UID
+const uid = 'u9RkIeB0mvTdoIdzC92YHnPLuvP2'; // Replace with your Firebase Auth UID
 
 admin.auth().setCustomUserClaims(uid, { role: 'admin' })
   .then(() => {
