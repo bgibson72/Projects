@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+    darkMode: 'class',
     content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
     theme: {
         extend: {
@@ -17,6 +18,12 @@ module.exports = {
                 'black': '#000000',
                 'bradley-green': '#33CC33',
                 'bradley-dark-green': '#339933',
+                'bradley-dark-bg': '#101014', // main dark background (almost black)
+                'bradley-dark-surface': '#23262F', // card/surface (dark gray)
+                'bradley-dark-card': '#181A20', // card background (modern dark gray)
+                'bradley-dark-card-text': '#F3F4F6', // card text (soft white)
+                'bradley-dark-border': '#23262F', // card border (subtle dark)
+                'bradley-dark-input': '#23262F', // input background in dark mode
             },
             boxShadow: {
                 'bradley': '0 4px 2px 0 #939598',

@@ -5,6 +5,7 @@ service cloud.firestore {
     // Employees collection
     match /employees/{employeeId} {
       allow read: if request.auth != null;
+      // Admins can create, update, and delete employees
       allow create, update: if request.auth.token.role == 'admin'
         && request.resource.data.email is string
         && request.resource.data.firstName is string
@@ -14,6 +15,21 @@ service cloud.firestore {
         && request.resource.data.color is string
         && request.resource.data.role == 'employee';
       allow delete: if request.auth.token.role == 'admin';
+      // Employees can update their own profile fields (firstName, lastName, phone) only
+      allow update: if request.auth != null
+        && request.auth.uid == employeeId
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.phone is string
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.position == resource.data.position
+        && request.resource.data.color == resource.data.color
+        && request.resource.data.role == resource.data.role
+        && (
+          // Allow updating photoUrl (string or null)
+          (request.resource.data.photoUrl == resource.data.photoUrl || request.resource.data.photoUrl is string || request.resource.data.photoUrl == null)
+        );
     }
 
     // Shifts collection

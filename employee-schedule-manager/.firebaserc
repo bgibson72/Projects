@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "schedule-manager-496e0"
-  }
+    "default": "schedule-manager-496e0",
+    "scheduler": "schedule-manager-496e0"
+  },
+  "targets": {},
+  "etags": {}
 }

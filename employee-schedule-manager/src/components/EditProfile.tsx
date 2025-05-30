@@ -110,8 +110,8 @@ export default function EditProfile() {
       <h1 className='text-3xl font-bold mb-6 text-bradley-dark-gray'>Edit Profile</h1>
       <div className='space-y-6'>
         {/* Card 1: Personal Info */}
-        <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
-          <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Personal Information</h2>
+        <div className='bg-white text-bradley-dark-gray p-6 rounded-lg border border-bradley-medium-gray shadow-bradley max-w-xl mx-auto dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-dark-border'>
+          <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray dark:text-bradley-dark-card-text'>Personal Information</h2>
           {error && <p className='text-bradley-red mb-4'>{error}</p>}
           <form onSubmit={handlePersonalSubmit} className='space-y-4'>
             <div>
@@ -175,7 +175,7 @@ export default function EditProfile() {
         </div>
 
         {/* Card 2: Password Change */}
-        <div className='bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598]'>
+        <div className='bg-white text-bradley-dark-gray p-6 rounded-lg border border-bradley-medium-gray shadow-[0_4px_0_0_#939598] dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-dark-border'>
           <h2 className='text-xl font-semibold mb-4 text-bradley-dark-gray'>Change Password</h2>
           {passwordError && <p className='text-bradley-red mb-4'>{passwordError}</p>}
           <form onSubmit={handlePasswordSubmit} className='space-y-4'>

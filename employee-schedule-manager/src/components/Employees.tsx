@@ -7,13 +7,20 @@ import { auth } from '../firebase';
 import { useAuthStore } from '../store/authStore';
 
 const pastelColors = [
-  '#E57373', // darker pink
-  '#FFD54F', // darker yellow
-  '#4DB6AC', // darker mint
-  '#9575CD', // darker lavender
-  '#FFB74D', // darker peach
-  '#64B5F6', // darker blue
-  '#81C784', // darker green
+  '#E57373', // Red
+  '#FFD54F', // Yellow
+  '#4DB6AC', // Teal
+  '#9575CD', // Purple
+  '#FFB74D', // Orange
+  '#64B5F6', // Blue
+  '#81C784', // Green
+  '#F06292', // Pink
+  '#BA68C8', // Violet
+  '#A1887F', // Brown
+  '#90A4AE', // Slate
+  '#AED581', // Light Green
+  '#FFF176', // Light Yellow
+  '#7986CB', // Indigo
 ];
 
 export default function Employees({ employees, setEmployees }: { employees: any[], setEmployees: (emps: any[]) => void }) {
@@ -237,14 +244,32 @@ export default function Employees({ employees, setEmployees }: { employees: any[
                 onChange={e => setNewEmployee({ ...newEmployee, username: e.target.value })}
                 required
               />
-              <input
-                type="text"
-                placeholder="Position"
-                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
-                value={newEmployee.position}
-                onChange={e => setNewEmployee({ ...newEmployee, position: e.target.value })}
-                required
-              />
+              {/* Replace the position dropdown with radio buttons */}
+              <div className="mb-4">
+                <label className="block mb-1 font-medium">Position</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="position"
+                      value="Service Desk Consultant"
+                      checked={newEmployee.position === 'Service Desk Consultant'}
+                      onChange={e => setNewEmployee({ ...newEmployee, position: e.target.value })}
+                    />
+                    <span>Service Desk Consultant</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="position"
+                      value="Senior Service Desk Consultant"
+                      checked={newEmployee.position === 'Senior Service Desk Consultant'}
+                      onChange={e => setNewEmployee({ ...newEmployee, position: e.target.value })}
+                    />
+                    <span>Senior Service Desk Consultant</span>
+                  </label>
+                </div>
+              </div>
               <input
                 type="email"
                 placeholder="Email Address"
@@ -341,43 +366,41 @@ export default function Employees({ employees, setEmployees }: { employees: any[
           </div>
         </div>
       )}
-      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley">
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Current Roster</h2>
+      <div className="bg-white text-bradley-dark-gray p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] mb-6 dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray dark:text-gray-200">Current Roster</h2>
         {employees.length === 0 ? (
           <p className="text-lg text-bradley-medium-gray">No employees found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full border border-bradley-medium-gray">
-              <thead>
-                <tr className="bg-bradley-light-gray">
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Last Name</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">First Name</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Position</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Email Address</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Phone Number</th>
-                  <th className="px-4 py-2 text-left text-bradley-dark-gray">Color</th>
+            <table className="min-w-full overflow-hidden table-fixed bg-white dark:bg-bradley-dark-card border border-bradley-dark-gray dark:border-bradley-light-gray">
+              <thead className="bg-bradley-light-gray dark:bg-bradley-dark-surface">
+                <tr>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200 border-r border-bradley-dark-gray dark:border-bradley-light-gray">Name</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200 border-r border-bradley-dark-gray dark:border-bradley-light-gray">Position</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200 border-r border-bradley-dark-gray dark:border-bradley-light-gray">Email</th>
+                  <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200 border-r border-bradley-dark-gray dark:border-bradley-light-gray">Phone</th>
+                  <th className="px-4 py-2 text-center text-bradley-dark-gray dark:text-gray-200 border-r border-bradley-dark-gray dark:border-bradley-light-gray">Color</th>
                   {user?.role === 'admin' && (
-                    <th className="px-4 py-2 text-center text-bradley-dark-gray">Actions</th>
+                    <th className="px-4 py-2 text-center text-bradley-dark-gray dark:text-gray-200">Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {employees.map((emp) => (
-                  <tr key={emp.id} className="border-t border-bradley-medium-gray">
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.lastName}</td>
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.firstName}</td>
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.position}</td>
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.email}</td>
-                    <td className="px-4 py-2 text-bradley-dark-gray">{emp.phone}</td>
-                    <td className="px-4 py-2">
-                      <span className="inline-block w-6 h-6 rounded-full border border-bradley-dark-gray" style={{ background: emp.color }}></span>
+                  <tr key={emp.id} className="border-t border-bradley-dark-gray dark:border-bradley-light-gray">
+                    <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.firstName} {emp.lastName}</td>
+                    <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.position}</td>
+                    <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.email}</td>
+                    <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text border-r border-bradley-dark-gray dark:border-bradley-light-gray">{emp.phone}</td>
+                    <td className="px-4 py-2 text-center border-r border-bradley-dark-gray dark:border-bradley-light-gray">
+                      <span className="inline-block w-6 h-6 rounded-full border border-bradley-medium-gray" style={{ background: emp.color }}></span>
                     </td>
                     {user?.role === 'admin' && (
-                      <td className="px-4 py-2 flex space-x-2 justify-center">
-                        <span title="Edit" className="cursor-pointer text-black" onClick={() => handleEditClick(emp)}>
+                      <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text flex space-x-2 justify-center items-center">
+                        <span title="Edit" className="cursor-pointer text-black dark:text-white" onClick={() => handleEditClick(emp)}>
                           <Pencil size={18} />
                         </span>
-                        <span title="Reset Password" className="cursor-pointer text-black" onClick={() => handleResetClick(emp)}>
+                        <span title="Reset Password" className="cursor-pointer text-black dark:text-white" onClick={() => handleResetClick(emp)}>
                           <KeyRound size={18} />
                         </span>
                       </td>
@@ -468,14 +491,32 @@ export default function Employees({ employees, setEmployees }: { employees: any[
                 onChange={e => setEditEmployee({ ...editEmployee, username: e.target.value })}
                 required
               />
-              <input
-                type="text"
-                placeholder="Position"
-                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
-                value={editEmployee.position}
-                onChange={e => setEditEmployee({ ...editEmployee, position: e.target.value })}
-                required
-              />
+              {/* Replace the position dropdown with radio buttons */}
+              <div className="mb-4">
+                <label className="block mb-1 font-medium">Position</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="position"
+                      value="Service Desk Consultant"
+                      checked={editEmployee.position === 'Service Desk Consultant'}
+                      onChange={e => setEditEmployee({ ...editEmployee, position: e.target.value })}
+                    />
+                    <span>Service Desk Consultant</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="position"
+                      value="Senior Service Desk Consultant"
+                      checked={editEmployee.position === 'Senior Service Desk Consultant'}
+                      onChange={e => setEditEmployee({ ...editEmployee, position: e.target.value })}
+                    />
+                    <span>Senior Service Desk Consultant</span>
+                  </label>
+                </div>
+              </div>
               <input
                 type="email"
                 placeholder="Email Address"

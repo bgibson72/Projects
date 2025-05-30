@@ -17,7 +17,7 @@ exports.createEmployee = functions.https.onCall(async (data: any, context: any) 
   if (!context.auth || context.auth.token.role !== 'admin') {
     throw new functions.https.HttpsError('permission-denied', 'Only admin can create employees.');
   }
-  const { email, tempPassword, firstName, lastName, username, position, phone, color } = data;
+  const { email, tempPassword, firstName, lastName, username, position, phone, role = 'employee', color = '' } = data;
   if (!email || !tempPassword || !firstName || !lastName || !username || !position) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing required fields.');
   }
@@ -32,19 +32,21 @@ exports.createEmployee = functions.https.onCall(async (data: any, context: any) 
     });
     // 2. Set custom claim for employee
     await admin.auth().setCustomUserClaims(userRecord.uid, { role: 'employee' });
-    // 3. Add employee to Firestore
-    await admin.firestore().collection('employees').doc(userRecord.uid).set({
-      email,
-      firstName,
-      lastName,
-      username,
-      position,
-      phone: phone || '',
-      color: color || '',
-      uid: userRecord.uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      role: 'employee',
-    });
+    // 3. Add employee to Firestore (only if role is employee)
+    if ((role || 'employee') === 'employee') {
+      await admin.firestore().collection('employees').doc(userRecord.uid).set({
+        email,
+        firstName,
+        lastName,
+        username,
+        position,
+        phone: phone || '',
+        color: color || '',
+        uid: userRecord.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        role: role || 'employee',
+      });
+    }
     return { success: true, uid: userRecord.uid };
   } catch (err: any) {
     throw new functions.https.HttpsError('internal', err.message || 'Failed to create employee.');
@@ -92,3 +94,33 @@ exports.updateEmployeeEmail = functions.https.onCall(async (data: any, context: 
     throw new functions.https.HttpsError('internal', err.message || 'Failed to update employee email.');
   }
 });
+
+// Backend safety net: Ensure all required fields exist on new employees
+const REQUIRED_FIELDS = {
+  firstName: '',
+  lastName: '',
+  phone: '',
+  email: '',
+  username: '',
+  position: '',
+  color: '',
+  role: 'employee',
+};
+
+exports.ensureEmployeeFields = functions.firestore
+  .document('employees/{employeeId}')
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    const update: Record<string, any> = {};
+    let needsPatch = false;
+    for (const [key, def] of Object.entries(REQUIRED_FIELDS)) {
+      if (!(key in data)) {
+        update[key] = def;
+        needsPatch = true;
+      }
+    }
+    if (needsPatch) {
+      await snap.ref.update(update);
+    }
+    return null;
+  });

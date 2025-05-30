@@ -8,6 +8,7 @@ import Schedule from './pages/Schedule';
 import Employees from './components/Employees';
 import Announcements from './components/Announcements';
 import NotFound from './pages/NotFound';
+import MyProfile from './components/MyProfile';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/announcements" element={<Announcements />} />
             </>
           )}
+          <Route path="/profile" element={<MyProfile />} />
         </>
       )}
       <Route path="*" element={<NotFound />} />

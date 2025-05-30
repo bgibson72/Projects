@@ -16,7 +16,7 @@ interface RequestType {
 // This component is deprecated and no longer used. Time Off Requests have been replaced by Shift Coverage Requests.
 export default function TimeOffRequest() {
   return (
-    <div className="p-6 text-center text-bradley-dark-gray">
+    <div className="p-6 text-center text-bradley-dark-gray bg-white rounded-lg border border-bradley-medium-gray shadow-bradley dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-dark-border">
       Time Off Requests are no longer supported. Please use Shift Coverage Requests for shift changes.
     </div>
   );

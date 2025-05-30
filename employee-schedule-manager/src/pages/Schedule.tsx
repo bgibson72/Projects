@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, parse, getDay, isBefore, isAfter } from 'date-fns';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { db } from '../firebase';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ShiftCoverageRequest } from '../types/shiftCoverageTypes';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import ReactDatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { enUS } from 'date-fns/locale';
+
+registerLocale('en-US', enUS);
 
 const viewOptions = [
   { label: 'Monthly', value: 'monthly' },
@@ -67,33 +73,43 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
 
   // Monthly View
   const renderMonthly = () => (
-    <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley overflow-x-auto">
-      <table className="min-w-full border border-bradley-medium-gray rounded-lg overflow-hidden table-fixed">
+    <div className="bg-white text-bradley-dark-gray p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] overflow-x-auto dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
+      <table className="min-w-full border-2 border-bradley-medium-gray dark:border-bradley-light-gray rounded-lg overflow-hidden table-fixed bg-white dark:bg-bradley-dark-card">
         <colgroup>
           {Array.from({ length: 7 }).map((_, i) => (
             <col key={i} style={{ width: '120px' }} />
           ))}
         </colgroup>
-        <thead className="border-b border-bradley-medium-gray">
-          <tr className="bg-bradley-light-gray">
+        <thead className="border-b-2 border-bradley-medium-gray dark:border-bradley-light-gray bg-bradley-light-gray dark:bg-bradley-dark-surface">
+          <tr className="bg-bradley-light-gray dark:bg-bradley-dark-surface">
             {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d) => (
-              <th key={d} className="px-2 py-2 text-center text-bradley-dark-gray border-r last:border-r-0 border-bradley-medium-gray font-medium" style={{ width: '120px' }}>{d}</th>
+              <th key={d} className="px-2 py-2 text-center text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '120px' }}>{d}</th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="bg-white dark:bg-bradley-dark-card">
           {getMonthMatrix().map((week, i) => (
-            <tr key={i} className="border-b last:border-b-0 border-bradley-medium-gray">
+            <tr key={i} className="border-b-2 last:border-b-0 border-bradley-medium-gray dark:border-bradley-light-gray">
               {week.map((day, j) => {
                 const dayShifts = shifts.filter(s => s.date === format(day, 'MM-dd-yyyy'));
                 const isToday = isSameDay(day, new Date());
+                const isCurrentMonth = isSameMonth(day, currentMonth);
+                const isPrevOrNextMonth = !isCurrentMonth;
                 return (
-                  <td key={j} className={`h-24 align-top px-2 py-1 border-t border-bradley-medium-gray border-r last:border-r-0 ${isSameMonth(day, currentMonth) ? 'bg-white' : 'bg-bradley-light-gray/30'}`} style={{ width: '120px', minWidth: '120px', maxWidth: '120px' }}>
+                  <td key={j} className={`h-24 align-top px-2 py-1 border-t-2 border-bradley-medium-gray dark:border-bradley-light-gray border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray ${isCurrentMonth ? 'bg-white dark:bg-[#181a20]' : 'bg-[#e2e8f0] dark:bg-bradley-dark-gray'}`} style={{ width: '120px', minWidth: '120px', maxWidth: '120px' }}>
                     <div className="text-xs font-semibold mb-1 text-right pr-1">
                       {isToday ? (
                         <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-bradley-red text-white">{format(day, 'd')}</span>
                       ) : (
-                        <span className="text-bradley-dark-gray">{format(day, 'd')}</span>
+                        <span className={
+  isToday
+    ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-bradley-red text-white"
+    : isCurrentMonth
+      ? "text-bradley-dark-gray dark:text-bradley-light-gray"
+      : "text-bradley-dark-gray dark:text-bradley-light-gray/80"
+}>
+  {format(day, 'd')}
+</span>
                       )}
                     </div>
                     <div className="space-y-1">
@@ -137,8 +153,8 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
   const renderDaily = () => {
     const dayShifts = shifts.filter(s => s.date === format(selectedDate, 'MM-dd-yyyy'));
     return (
-      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley mt-4">
-        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray">Shifts for {format(selectedDate, 'MM-dd-yyyy')}</h2>
+      <div className="bg-white p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] mt-4 dark:bg-bradley-dark-card dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
+        <h2 className="text-xl font-semibold mb-4 text-bradley-dark-gray dark:text-bradley-light-gray">Shifts for {format(selectedDate, 'MM-dd-yyyy')}</h2>
         {dayShifts.length === 0 ? (
           <p className="text-lg text-bradley-medium-gray">No shifts scheduled.</p>
         ) : (
@@ -146,10 +162,10 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
             {dayShifts.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(shift => (
               <li key={shift.id} className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 rounded-full" style={{ background: shift.color }}></span>
-                <span className="font-medium text-bradley-dark-gray">{shift.startTime} - {shift.endTime}</span>
-                <span className="text-bradley-dark-gray">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
+                <span className="font-medium text-bradley-dark-gray dark:text-bradley-light-gray">{shift.startTime} - {shift.endTime}</span>
+                <span className="text-bradley-dark-gray dark:text-bradley-light-gray">{getEmployeeName(employees.find(e => e.id === shift.employeeId))}</span>
                 {user?.role === 'admin' && (
-                  <button onClick={() => { setEditingShift(shift); setShowShiftModal(true); }} className="ml-2 text-bradley-dark-gray"><Pencil size={16} /></button>
+                  <button onClick={() => { setEditingShift(shift); setShowShiftModal(true); }} className="ml-2 text-bradley-dark-gray dark:text-bradley-light-gray"><Pencil size={16} /></button>
                 )}
               </li>
             ))}
@@ -171,7 +187,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
           isSameDay(new Date(s.date), date)
         );
         return (
-          <td key={days[idx]} className="px-2 py-1 border-t border-r last:border-r-0 border-bradley-medium-gray">
+          <td key={days[idx]} className="px-2 py-1 border-t-2 border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray">
             {empShifts.map(shift => (
               <div
                 key={shift.id}
@@ -190,25 +206,25 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
       });
       return (
         <tr key={emp.id}>
-          <td className="px-2 py-1 border-t border-r border-bradley-medium-gray font-semibold text-bradley-dark-gray">{getEmployeeName(emp)}</td>
+          <td className="px-2 py-1 border-t-2 border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-semibold text-bradley-dark-gray dark:text-bradley-light-gray">{getEmployeeName(emp)}</td>
           {row}
         </tr>
       );
     });
     return (
-      <div className="bg-white p-6 rounded-lg border border-bradley-medium-gray shadow-bradley overflow-x-auto">
-        <table className="min-w-full border border-bradley-medium-gray rounded-lg overflow-hidden table-fixed">
+      <div className="bg-white p-6 rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] overflow-x-auto dark:bg-bradley-dark-card dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF]">
+        <table className="min-w-full border-2 border-bradley-medium-gray dark:border-bradley-light-gray rounded-lg overflow-hidden table-fixed">
           <colgroup>
             <col style={{ width: '160px' }} />
             {Array.from({ length: 7 }).map((_, i) => (
               <col key={i} style={{ width: '120px' }} />
             ))}
           </colgroup>
-          <thead className="border-b border-bradley-medium-gray">
-            <tr className="bg-bradley-light-gray">
-              <th className="px-2 py-2 text-left text-bradley-dark-gray border-r border-bradley-medium-gray font-medium" style={{ width: '160px' }}>Employee</th>
+          <thead className="border-b-2 border-bradley-medium-gray dark:border-bradley-light-gray">
+            <tr className="bg-bradley-light-gray dark:bg-bradley-dark-surface">
+              <th className="px-2 py-2 text-left text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '160px' }}>Employee</th>
               {weekDays.map((date, idx) => (
-                <th key={idx} className="px-2 py-2 text-center text-bradley-dark-gray border-r last:border-r-0 border-bradley-medium-gray font-medium" style={{ width: '120px' }}>
+                <th key={idx} className="px-2 py-2 text-center text-bradley-dark-gray dark:text-bradley-light-gray border-r-2 last:border-r-0 border-bradley-medium-gray dark:border-bradley-light-gray font-medium" style={{ width: '120px' }}>
                   {format(date, 'EEE, MMM d')}
                 </th>
               ))}
@@ -230,20 +246,32 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
     onDelete: (id: string | undefined, deleteAll: boolean) => void;
     isEdit: boolean;
   }) => {
-    const [date, setDate] = useState<string>(shift?.date || format(selectedDate, 'MM-dd-yyyy'));
+    const [date, setDate] = useState<Date>(shift?.date ? new Date(shift.date) : selectedDate);
     const [startTime, setStartTime] = useState<string>(shift?.startTime || '08:00 AM');
     const [endTime, setEndTime] = useState<string>(shift?.endTime || '12:00 PM');
-    const [repeatDays, setRepeatDays] = useState<number[]>(shift?.repeatDays || []);
-    const [repeatWeekly, setRepeatWeekly] = useState<boolean>(shift?.repeatWeekly || false);
-    const [repeatEndDate, setRepeatEndDate] = useState<string>(shift?.repeatEndDate || '');
+    const [repeatEndDate, setRepeatEndDate] = useState<Date | null>(shift?.repeatEndDate ? new Date(shift.repeatEndDate) : null);
     const [assignedEmployee, setAssignedEmployee] = useState<string>(shift?.employeeId || employees[0].id);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteAllRepeats, setDeleteAllRepeats] = useState(false);
     const [deleteStatus, setDeleteStatus] = useState<string>('');
     const [deleteError, setDeleteError] = useState<string>('');
     const [deleting, setDeleting] = useState(false);
-
+    const [repeatDays, setRepeatDays] = useState<number[]>(shift?.repeatDays || []);
+    const [repeatWeekly, setRepeatWeekly] = useState<boolean>(shift?.repeatWeekly || false);
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
+    const [repeatEndDatePickerOpen, setRepeatEndDatePickerOpen] = useState(false);
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Generate 30-min time options from 8:00 AM to 10:00 PM
+    const timeOptions = [];
+    for (let h = 8; h <= 22; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        const hour12 = h % 12 === 0 ? 12 : h % 12;
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const min = m === 0 ? '00' : '30';
+        timeOptions.push(`${hour12}:${min} ${ampm}`);
+      }
+    }
 
     const handleDayToggle = (idx: number) => {
       setRepeatDays((prev: number[]) => prev.includes(idx) ? prev.filter((d: number) => d !== idx) : [...prev, idx]);
@@ -253,7 +281,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
       e.preventDefault();
       const newShift: Shift = {
         id: shift?.id || '',
-        date,
+        date: date ? format(date, 'MM-dd-yyyy') : '',
         startTime,
         endTime,
         employeeId: assignedEmployee,
@@ -261,7 +289,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
         color: employees.find(e => e.id === assignedEmployee)?.color || '#FFD6E0',
         repeatDays,
         repeatWeekly,
-        repeatEndDate,
+        repeatEndDate: repeatEndDate ? format(repeatEndDate, 'MM-dd-yyyy') : '',
       };
       onSave(newShift);
     };
@@ -308,39 +336,80 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
           )}
           <h2 className="text-xl font-bold mb-4">{isEdit ? 'Edit Shift' : 'Add Shift'}</h2>
           <form onSubmit={handleSave} className="space-y-4">
-            <div>
+            <div className="relative">
               <label className="block mb-1 font-medium">Date</label>
-              <input
-                type="text"
-                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                placeholder="MM-DD-YYYY"
+              <ReactDatePicker
+                selected={date}
+                onChange={d => { setDate(d as Date); setDatePickerOpen(false); }}
+                dateFormat="MM-dd-yyyy"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100 pr-10"
+                wrapperClassName="w-full"
+                popperClassName="!z-[9999]"
                 required
+                autoComplete="off"
+                showPopperArrow={false}
+                open={datePickerOpen}
+                onClickOutside={() => setDatePickerOpen(false)}
+                // Fix: onInputClick expects no arguments, so use a function with no parameters
+                onInputClick={() => {}}
+                customInput={
+                  <div className="relative">
+                    <input
+                      className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100 pr-10"
+                      value={date ? format(date, 'MM-dd-yyyy') : ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (!val) setDate(new Date());
+                        else {
+                          const parsed = new Date(val);
+                          setDate(isNaN(parsed.getTime()) ? new Date() : parsed);
+                        }
+                      }}
+                      placeholder="MM-DD-YYYY"
+                      readOnly
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-bradley-dark-gray hover:text-bradley-red focus:outline-none"
+                      tabIndex={-1}
+                      onClick={e => {
+                        e.preventDefault();
+                        setDatePickerOpen((open) => !open);
+                      }}
+                    >
+                      <Calendar size={18} />
+                    </button>
+                  </div>
+                }
+                allowSameDay
               />
             </div>
             <div className="flex gap-2">
               <div className="w-1/2">
                 <label className="block mb-1 font-medium">Start Time</label>
-                <input
-                  type="text"
-                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                <select
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                   value={startTime}
                   onChange={e => setStartTime(e.target.value)}
-                  placeholder="08:00 AM"
                   required
-                />
+                >
+                  {timeOptions.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
               </div>
               <div className="w-1/2">
                 <label className="block mb-1 font-medium">End Time</label>
-                <input
-                  type="text"
-                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                <select
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                   value={endTime}
                   onChange={e => setEndTime(e.target.value)}
-                  placeholder="12:00 PM"
                   required
-                />
+                >
+                  {timeOptions.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
@@ -369,27 +438,65 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
               </label>
             </div>
             {repeatWeekly && (
-              <div>
+              <div className="relative">
                 <label className="block mb-1 font-medium">End Date</label>
-                <input
-                  type="text"
-                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
-                  value={repeatEndDate}
-                  onChange={e => setRepeatEndDate(e.target.value)}
-                  placeholder="MM-DD-YYYY"
+                <ReactDatePicker
+                  selected={repeatEndDate}
+                  onChange={d => { setRepeatEndDate(d as Date); setRepeatEndDatePickerOpen(false); }}
+                  dateFormat="MM-dd-yyyy"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100 pr-10"
+                  wrapperClassName="w-full"
+                  popperClassName="!z-[9999]"
                   required
+                  autoComplete="off"
+                  showPopperArrow={false}
+                  open={repeatEndDatePickerOpen}
+                  onClickOutside={() => setRepeatEndDatePickerOpen(false)}
+                  // Fix: onInputClick expects no arguments, so use a function with no parameters
+                  onInputClick={() => {}}
+                  customInput={
+                    <div className="relative">
+                      <input
+                        className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100 pr-10"
+                        value={repeatEndDate ? format(repeatEndDate, 'MM-dd-yyyy') : ''}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (!val) setRepeatEndDate(null);
+                          else {
+                            const parsed = new Date(val);
+                            setRepeatEndDate(isNaN(parsed.getTime()) ? null : parsed);
+                          }
+                        }}
+                        placeholder="MM-DD-YYYY"
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-bradley-dark-gray hover:text-bradley-red focus:outline-none"
+                        tabIndex={-1}
+                        onClick={e => {
+                          e.preventDefault();
+                          setRepeatEndDatePickerOpen((open) => !open);
+                        }}
+                      >
+                        <Calendar size={18} />
+                      </button>
+                    </div>
+                  }
+                  allowSameDay
                 />
               </div>
             )}
             <div>
               <label className="block mb-1 font-medium">Assign to Employee</label>
               <select
-                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white"
+                className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                 value={assignedEmployee}
                 onChange={e => setAssignedEmployee(e.target.value)}
+                style={{ backgroundColor: '#fff', color: '#222', opacity: 1 }}
               >
                 {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
                 ))}
               </select>
             </div>
@@ -452,6 +559,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
         </div>
       </div>
     );
+
   };
 
   // Add/Edit shift logic
@@ -510,7 +618,7 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
           {viewOptions.map(opt => (
             <button
               key={opt.value}
-              className={`px-3 py-2 rounded-md font-medium border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray transition-colors duration-100 ${view === opt.value ? 'border-bradley-red ring-2 ring-bradley-red text-bradley-red bg-white' : ''}`}
+              className={`px-3 py-2 rounded-md font-medium text-bradley-light-gray transition-colors duration-100 focus:ring-2 focus:ring-bradley-red focus:outline-none ${view === opt.value ? 'bg-bradley-red' : 'bg-bradley-medium-gray'}`}
               onClick={() => setView(opt.value)}
             >
               {opt.label}
@@ -520,17 +628,21 @@ export default function Schedule({ employees, setEmployees }: { employees: any[]
         {/* Month name and navigation in center */}
         <div className="flex items-center gap-2 flex-1 justify-center">
           <button
-            className="px-4 py-2 border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-none hover:bg-white transition-colors duration-100"
+            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md hover:bg-white transition-colors duration-100 flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none"
             onClick={handlePrevMonth}
+            aria-label="Previous Month"
           >
-            Previous
+            <ChevronLeft size={18} />
           </button>
-          <span className="text-2xl font-bold text-bradley-dark-gray mx-2 min-w-[180px] text-center">{format(currentMonth, 'MMMM yyyy')}</span>
+          <span className="text-2xl font-bold mx-2 min-w-[180px] text-center flex items-center justify-center text-bradley-dark-gray dark:text-bradley-light-gray">
+            {format(currentMonth, 'MMMM yyyy')}
+          </span>
           <button
-            className="px-4 py-2 border border-bradley-medium-gray bg-bradley-light-gray text-bradley-dark-gray rounded-md shadow-none hover:bg-white transition-colors duration-100"
+            className="px-4 py-2 bg-bradley-light-gray text-bradley-dark-gray rounded-md hover:bg-white transition-colors duration-100 flex items-center justify-center focus:ring-2 focus:ring-bradley-red focus:outline-none"
             onClick={handleNextMonth}
+            aria-label="Next Month"
           >
-            Next
+            <ChevronRight size={18} />
           </button>
         </div>
         {/* Add Shift button on right, admin only */}

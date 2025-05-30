@@ -19,6 +19,17 @@ export default function ShiftCoverageRequest() {
   const [collisionWarning, setCollisionWarning] = useState('');
   const [pendingClaim, setPendingClaim] = useState<ShiftCoverageRequestType | null>(null);
 
+  // Generate 30-min time options from 8:00 AM to 10:00 PM
+  const timeOptions = [];
+  for (let h = 8; h <= 22; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hour12 = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h < 12 ? 'AM' : 'PM';
+      const min = m === 0 ? '00' : '30';
+      timeOptions.push(`${hour12}:${min} ${ampm}`);
+    }
+  }
+
   // Fetch user's shifts and all open coverage requests
   useEffect(() => {
     if (!user) return;
@@ -121,7 +132,7 @@ export default function ShiftCoverageRequest() {
   if (!user) return null;
   const isEmployee = user.role === 'employee';
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg">
+    <div className="bg-white text-bradley-dark-gray p-6 rounded-lg border border-bradley-medium-gray shadow-bradley mb-6 dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-dark-border">
       <h1 className="text-2xl font-bold mb-4">Shift Coverage Requests</h1>
       {error && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{error}</div>}
       {success && <div className="mb-2 p-2 bg-green-100 text-green-800 rounded">{success}</div>}
@@ -144,10 +155,11 @@ export default function ShiftCoverageRequest() {
               <div>
                 <label className="block mb-1 font-medium">Select Shift</label>
                 <select
-                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full"
+                  className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                   value={selectedShift?.id || ''}
                   onChange={e => setSelectedShift(shifts.find(s => s.id === e.target.value) || null)}
                   required
+                  style={{ backgroundColor: '#fff', color: '#222', opacity: 1 }}
                 >
                   <option value="">-- Select --</option>
                   {shifts.map(shift => (
@@ -160,23 +172,33 @@ export default function ShiftCoverageRequest() {
               <div className="flex gap-2">
                 <div className="w-1/2">
                   <label className="block mb-1 font-medium">Coverage Start</label>
-                  <input
-                    type="time"
-                    className="border border-bradley-dark-gray px-2 py-1 rounded w-full"
+                  <select
+                    className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                     value={coverageStart}
                     onChange={e => setCoverageStart(e.target.value)}
                     required
-                  />
+                    style={{ backgroundColor: '#fff', color: '#222', opacity: 1 }}
+                  >
+                    <option value="">-- Select --</option>
+                    {timeOptions.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="w-1/2">
                   <label className="block mb-1 font-medium">Coverage End</label>
-                  <input
-                    type="time"
-                    className="border border-bradley-dark-gray px-2 py-1 rounded w-full"
+                  <select
+                    className="border border-bradley-dark-gray px-2 py-1 rounded w-full bg-white text-bradley-dark-gray !bg-opacity-100 !opacity-100"
                     value={coverageEnd}
                     onChange={e => setCoverageEnd(e.target.value)}
                     required
-                  />
+                    style={{ backgroundColor: '#fff', color: '#222', opacity: 1 }}
+                  >
+                    <option value="">-- Select --</option>
+                    {timeOptions.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -228,14 +250,14 @@ export default function ShiftCoverageRequest() {
       {/* Open Coverage Requests Board */}
       <h2 className="text-xl font-semibold mt-8 mb-4">Open Coverage Requests</h2>
       <div className="overflow-x-auto">
-        <table className="min-w-full border border-bradley-medium-gray">
-          <thead>
-            <tr className="bg-bradley-light-gray">
-              <th className="px-4 py-2 text-left">Date</th>
-              <th className="px-4 py-2 text-left">Time</th>
-              <th className="px-4 py-2 text-left">Owner</th>
-              <th className="px-4 py-2 text-left">Status</th>
-              <th className="px-4 py-2 text-left">Actions</th>
+        <table className="min-w-full rounded-lg overflow-hidden table-fixed bg-white dark:bg-bradley-dark-card">
+          <thead className="bg-bradley-light-gray dark:bg-bradley-dark-surface">
+            <tr>
+              <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200">Date</th>
+              <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200">Time</th>
+              <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200">Owner</th>
+              <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200">Status</th>
+              <th className="px-4 py-2 text-left text-bradley-dark-gray dark:text-gray-200">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -244,11 +266,11 @@ export default function ShiftCoverageRequest() {
             ) : (
               coverageRequests.map(req => (
                 <tr key={req.id} className="border-t border-bradley-medium-gray">
-                  <td className="px-4 py-2">{req.date}</td>
-                  <td className="px-4 py-2">{req.requestedCoverageStart} - {req.requestedCoverageEnd}</td>
-                  <td className="px-4 py-2">{req.originalOwnerName}</td>
-                  <td className="px-4 py-2">{req.status}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text">{req.date}</td>
+                  <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text">{req.requestedCoverageStart} - {req.requestedCoverageEnd}</td>
+                  <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text">{req.originalOwnerName}</td>
+                  <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text">{req.status}</td>
+                  <td className="px-4 py-2 bg-white dark:bg-bradley-dark-card text-bradley-dark-gray dark:text-bradley-dark-card-text">
                     {req.status === 'Open' && req.originalOwnerId !== user?.id && (
                       <button className="px-3 py-1 bg-bradley-blue text-white rounded" onClick={() => handleClaim(req)} disabled={loading}>Claim</button>
                     )}

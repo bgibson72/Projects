@@ -24,6 +24,12 @@ export default function Login() {
   const [showResetVerifyPassword, setShowResetVerifyPassword] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
 
   useEffect(() => {
     if (user) {
@@ -34,6 +40,16 @@ export default function Login() {
       }
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
 
   // Helper: map username to email (now supports Firestore lookup)
   const usernameToEmail = async (username: string) => {
@@ -113,19 +129,19 @@ export default function Login() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-bradley-light-gray">
-      <div className="bg-white p-8 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
-        <h1 className="text-3xl font-bold mb-6 text-bradley-dark-gray text-center">Login</h1>
+    <div className="flex items-start justify-center min-h-screen bg-bradley-light-gray dark:bg-bradley-dark-bg pt-16">
+      <div className="w-full max-w-md mx-auto bg-white dark:bg-bradley-dark-card rounded-lg border-2 border-bradley-medium-gray shadow-[0_6px_0_0_#939598FF] dark:border-bradley-light-gray dark:shadow-[0_6px_0_0_#E2E8F0FF] p-8 mt-16">
+        <h1 className="text-3xl font-bold mb-6 text-bradley-dark-gray text-center dark:text-bradley-light-gray">Login</h1>
         {error && <p className="text-bradley-red text-sm mb-4">{error}</p>}
         {showForgotPassword ? (
           <form onSubmit={handleSendResetEmail} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-bradley-dark-gray">Registered Email Address</label>
+              <label className="block text-sm font-medium text-bradley-dark-gray dark:text-bradley-light-gray">Registered Email Address</label>
               <input
                 type="email"
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                className="mt-1 w-full px-2 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue dark:text-bradley-dark-card-text dark:bg-bradley-dark-input"
                 required
               />
             </div>
@@ -154,23 +170,23 @@ export default function Login() {
         ) : !showResetPassword ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-bradley-dark-gray">Username</label>
+              <label className="block text-sm font-medium text-bradley-dark-gray dark:text-bradley-light-gray">Email</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="mt-1 w-full px-4 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue text-lg"
+                className="mt-1 w-full px-4 py-2 border border-bradley-medium-gray rounded-md text-bradley-light-gray bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue text-lg"
                 style={{ minWidth: 320 }}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-bradley-dark-gray">Password</label>
+              <label className="block text-sm font-medium text-bradley-dark-gray dark:text-bradley-light-gray">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-dark-gray bg-white focus:outline-none focus:ring-2 focus:ring-bradley-blue"
+                className="mt-1 w-full px-3 py-2 border border-bradley-medium-gray rounded-md text-bradley-light-gray bg-white dark:bg-bradley-dark-card focus:outline-none focus:ring-2 focus:ring-bradley-blue"
                 required
               />
             </div>
@@ -276,7 +292,7 @@ export default function Login() {
       </div>
       {showResetPassword && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-          <div className="bg-white p-6 rounded-lg border border-bradley-dark-gray shadow-bradley w-full max-w-md">
+          <div className="bg-white text-bradley-dark-gray p-6 rounded-lg border border-bradley-medium-gray shadow-bradley max-w-md mx-auto dark:bg-bradley-dark-card dark:text-bradley-dark-card-text dark:border-bradley-light-border">
             <h2 className="text-xl font-bold mb-4">Set New Password</h2>
             <form onSubmit={handlePasswordResetPopup} className="space-y-4">
               {resetError && <p className="text-bradley-red text-sm mb-2">{resetError}</p>}

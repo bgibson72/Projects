@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-    --bradley-light-red: #E42F4B; /* Fixed typo from --braldey-light-red */
+    --bradley-light-red: #E42F4B;
     --bradley-red: #CE1432;
     --bradley-med-red: #A50000;
     --bradley-dark-red: #870F0F;
@@ -21,4 +21,13 @@ html, body {
   height: 100%;
   min-height: 100vh;
   background-color: #E2E8F0; /* bradley-light-gray */
+}
+
+html.dark, body.dark {
+  background-color: #101014 !important; /* bradley-dark-bg */
+  color: #F3F4F6 !important; /* bradley-dark-card-text */
+}
+
+body {
+  @apply bg-bradley-light-gray text-bradley-dark-gray dark:bg-bradley-dark-bg dark:text-bradley-dark-card-text;
 }
