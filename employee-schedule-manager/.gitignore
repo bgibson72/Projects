@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets
+schedule-manager-496e0-firebase-adminsdk-fbsvc-d48b52a132.json
