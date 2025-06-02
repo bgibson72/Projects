@@ -1,4 +1,0 @@
-pyqt5
-pillow
-# cairosvg is commented out due to missing cairo dependency on Windows
-# cairosvg
